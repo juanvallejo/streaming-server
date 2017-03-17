@@ -2,37 +2,72 @@ package server
 
 import (
 	"io"
+	"log"
 	"net/http"
+	"regexp"
+
+	"github.com/juanvallejo/streaming-server/pkg/api"
 )
 
 const (
-	defaultPort string = "8000"
+	defaultPort string = "8080"
 	defaultHost string = "0.0.0.0"
+
+	RootHTMLPath = "pkg/html"
+
+	apiWildcardUrlPattern    = "/api/*"
+	staticWildcardUrlPattern = "/static/*"
 )
 
 type ServerOptions struct {
 	Port string
 	Host string
+	Out  io.Writer
 
 	server *http.Server
 }
 
-var handlers map[string]func(http.ResponseWriter, *http.Request)
+// map of req strings to file names
+var fileHandlers map[string]string
+var reqHandlers map[string]func(http.ResponseWriter, *http.Request)
 
 type Handler struct{}
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h, ok := handlers[r.URL.String()]; ok {
+	if h, ok := reqHandlers[r.URL.String()]; ok {
 		h(w, r)
 		return
 	}
 
-	handleAnyReq(w, r)
+	// handle wildcard urls for static ui files
+	reg := regexp.MustCompile(staticWildcardUrlPattern)
+	if reg.MatchString(r.URL.String()) {
+		if h, ok := reqHandlers[staticWildcardUrlPattern]; ok {
+			h(w, r)
+			return
+		}
+	}
+
+	// handle wildcard urls for api requests
+	reg = regexp.MustCompile(apiWildcardUrlPattern)
+	if reg.MatchString(r.URL.String()) {
+		if h, ok := reqHandlers[apiWildcardUrlPattern]; ok {
+			h(w, r)
+			return
+		}
+	}
+
+	handleNotFoundReq(w, r)
 }
 
 func addHandlers() {
-	handlers = make(map[string]func(http.ResponseWriter, *http.Request))
-	handlers["/"] = handleRootReq
+	reqHandlers = make(map[string]func(http.ResponseWriter, *http.Request))
+	reqHandlers["/"] = handleRootReq
+	reqHandlers["/static/*"] = handleStaticReq
+	reqHandlers["/api/*"] = handleApiReq
+
+	fileHandlers = make(map[string]string)
+	fileHandlers["/"] = "index.html"
 }
 
 // New creates a new server from server options
@@ -44,6 +79,9 @@ func New(opts *ServerOptions) *ServerOptions {
 	}
 	if len(opts.Host) == 0 {
 		opts.Host = defaultHost
+	}
+	if opts.Out == nil {
+		panic("No output method defined.")
 	}
 	if opts.server == nil {
 		opts.server = &http.Server{
@@ -59,7 +97,12 @@ func New(opts *ServerOptions) *ServerOptions {
 // Serve starts an http server
 // using specified settings.
 func (s *ServerOptions) Serve() {
-	s.server.ListenAndServe()
+	log.Printf("Serving on %s\n", s.getAddr())
+
+	err := s.server.ListenAndServe()
+	if err != nil {
+		panic(err.Error())
+	}
 }
 
 func (s *ServerOptions) getAddr() string {
@@ -67,10 +110,38 @@ func (s *ServerOptions) getAddr() string {
 }
 
 func handleRootReq(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, "Hello World!")
+	if fileName, ok := fileHandlers[r.URL.String()]; ok {
+		log.Printf("Serving root request with filename %q\n", fileName)
+		http.ServeFile(w, r, RootHTMLPath+"/"+fileName)
+		return
+	}
+
+	log.Printf("Attempted to serve root with unknown path %s\n", r.URL.String())
+	handleNotFoundReq(w, r)
 }
 
-func handleAnyReq(w http.ResponseWriter, r *http.Request) {
+func handleStaticReq(w http.ResponseWriter, r *http.Request) {
+	if fileName, ok := fileHandlers[r.URL.String()]; ok {
+		log.Printf("Serving static file %q with path %q\n", fileName, RootHTMLPath+fileName)
+		http.ServeFile(w, r, RootHTMLPath+fileName)
+		return
+	}
+
+	if len(r.URL.String()) == 0 {
+		log.Printf("Static file requested, but request was empty\n")
+		handleNotFoundReq(w, r)
+		return
+	}
+
+	log.Printf("Attempting to serve static file without map %q\n", RootHTMLPath+r.URL.String())
+	http.ServeFile(w, r, RootHTMLPath+r.URL.String())
+}
+
+func handleApiReq(w http.ResponseWriter, r *http.Request) {
+	api.HandleRequest(w, r)
+}
+
+func handleNotFoundReq(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 	io.WriteString(w, "404: File not found.")
 }
