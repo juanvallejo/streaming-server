@@ -10,3 +10,9 @@ Streaming server that serves media files to multiple clients, and keeps them all
 ### Why?
 
 Thought it'd be fun.
+
+### TODO
+
+- Finish adding websocket support
+- Add go dependency management
+  - https://github.com/googollee/go-socket.io
