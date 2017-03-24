@@ -5,8 +5,11 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 
+	sockio "github.com/googollee/go-socket.io"
 	"github.com/juanvallejo/streaming-server/pkg/api"
+	"github.com/juanvallejo/streaming-server/pkg/socket"
 )
 
 const (
@@ -15,14 +18,16 @@ const (
 
 	RootHTMLPath = "pkg/html"
 
-	apiWildcardUrlPattern    = "/api/*"
-	staticWildcardUrlPattern = "/static/*"
+	apiBaseUrl    = "/api"
+	staticBaseUrl = "/static"
+	socketBaseUrl = "/socket.io"
 )
 
 type ServerOptions struct {
-	Port string
-	Host string
-	Out  io.Writer
+	Host         string
+	Out          io.Writer
+	Port         string
+	SocketServer *sockio.Server
 
 	server *http.Server
 }
@@ -31,27 +36,37 @@ type ServerOptions struct {
 var fileHandlers map[string]string
 var reqHandlers map[string]func(http.ResponseWriter, *http.Request)
 
-type Handler struct{}
+// HTTPSocketHandler handles http and socket.io requests
+type HTTPSocketHandler struct {
+	socketHandler *sockio.Server
+}
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h, ok := reqHandlers[r.URL.String()]; ok {
 		h(w, r)
 		return
 	}
 
+	// handle socket.io endpoint requests
+	if strings.HasPrefix(r.URL.String(), socketBaseUrl) {
+		if h.socketHandler != nil {
+			socket.HandleSocketRequest(h.socketHandler, w, r)
+			return
+		}
+	}
+
 	// handle wildcard urls for static ui files
-	reg := regexp.MustCompile(staticWildcardUrlPattern)
+	reg := regexp.MustCompile(staticBaseUrl)
 	if reg.MatchString(r.URL.String()) {
-		if h, ok := reqHandlers[staticWildcardUrlPattern]; ok {
+		if h, ok := reqHandlers[staticBaseUrl]; ok {
 			h(w, r)
 			return
 		}
 	}
 
 	// handle wildcard urls for api requests
-	reg = regexp.MustCompile(apiWildcardUrlPattern)
-	if reg.MatchString(r.URL.String()) {
-		if h, ok := reqHandlers[apiWildcardUrlPattern]; ok {
+	if strings.HasPrefix(r.URL.String(), apiBaseUrl) {
+		if h, ok := reqHandlers[apiBaseUrl]; ok {
 			h(w, r)
 			return
 		}
@@ -63,8 +78,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func addHandlers() {
 	reqHandlers = make(map[string]func(http.ResponseWriter, *http.Request))
 	reqHandlers["/"] = handleRootReq
-	reqHandlers["/static/*"] = handleStaticReq
-	reqHandlers["/api/*"] = handleApiReq
+	reqHandlers["/static"] = handleStaticReq
+	reqHandlers["/api"] = handleApiReq
 
 	fileHandlers = make(map[string]string)
 	fileHandlers["/"] = "index.html"
@@ -85,8 +100,10 @@ func New(opts *ServerOptions) *ServerOptions {
 	}
 	if opts.server == nil {
 		opts.server = &http.Server{
-			Addr:    opts.getAddr(),
-			Handler: &Handler{},
+			Addr: opts.getAddr(),
+			Handler: &HTTPSocketHandler{
+				socketHandler: opts.SocketServer,
+			},
 		}
 	}
 
@@ -94,8 +111,7 @@ func New(opts *ServerOptions) *ServerOptions {
 	return opts
 }
 
-// Serve starts an http server
-// using specified settings.
+// Serve starts an http server using specified settings.
 func (s *ServerOptions) Serve() {
 	log.Printf("Serving on %s\n", s.getAddr())
 
