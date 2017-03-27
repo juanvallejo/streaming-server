@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	sockio "github.com/googollee/go-socket.io"
 	"github.com/juanvallejo/streaming-server/pkg/api"
 	"github.com/juanvallejo/streaming-server/pkg/socket"
 )
@@ -24,10 +23,10 @@ const (
 )
 
 type ServerOptions struct {
-	Host         string
-	Out          io.Writer
-	Port         string
-	SocketServer *sockio.Server
+	Host          string
+	Out           io.Writer
+	Port          string
+	SocketHandler *socket.Handler
 
 	server *http.Server
 }
@@ -38,7 +37,7 @@ var reqHandlers map[string]func(http.ResponseWriter, *http.Request)
 
 // HTTPSocketHandler handles http and socket.io requests
 type HTTPSocketHandler struct {
-	socketHandler *sockio.Server
+	socketHandler *socket.Handler
 }
 
 func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +49,7 @@ func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// handle socket.io endpoint requests
 	if strings.HasPrefix(r.URL.String(), socketBaseUrl) {
 		if h.socketHandler != nil {
-			socket.HandleSocketRequest(h.socketHandler, w, r)
+			h.socketHandler.HandleRequest(w, r)
 			return
 		}
 	}
@@ -102,7 +101,7 @@ func New(opts *ServerOptions) *ServerOptions {
 		opts.server = &http.Server{
 			Addr: opts.getAddr(),
 			Handler: &HTTPSocketHandler{
-				socketHandler: opts.SocketServer,
+				socketHandler: opts.SocketHandler,
 			},
 		}
 	}
