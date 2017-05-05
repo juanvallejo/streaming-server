@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/api"
 	"github.com/juanvallejo/streaming-server/pkg/socket"
+	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
 const (
@@ -26,7 +27,8 @@ type ServerOptions struct {
 	Host          string
 	Out           io.Writer
 	Port          string
-	SocketHandler *socket.Handler
+	SocketHandler *socket.Socket
+	Stream        *stream.Stream
 
 	server *http.Server
 }
@@ -37,7 +39,7 @@ var reqHandlers map[string]func(http.ResponseWriter, *http.Request)
 
 // HTTPSocketHandler handles http and socket.io requests
 type HTTPSocketHandler struct {
-	socketHandler *socket.Handler
+	socketHandler *socket.Socket
 }
 
 func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +114,7 @@ func New(opts *ServerOptions) *ServerOptions {
 
 // Serve starts an http server using specified settings.
 func (s *ServerOptions) Serve() {
-	log.Printf("Serving on %s\n", s.getAddr())
+	log.Printf("HTTP Serving on %s\n", s.getAddr())
 
 	err := s.server.ListenAndServe()
 	if err != nil {
@@ -126,12 +128,12 @@ func (s *ServerOptions) getAddr() string {
 
 func handleRootReq(w http.ResponseWriter, r *http.Request) {
 	if fileName, ok := fileHandlers[r.URL.String()]; ok {
-		log.Printf("Serving root request with filename %q\n", fileName)
+		log.Printf("HTTP Serving root request with filename %q\n", fileName)
 		http.ServeFile(w, r, RootHTMLPath+"/"+fileName)
 		return
 	}
 
-	log.Printf("Attempted to serve root with unknown path %s\n", r.URL.String())
+	log.Printf("HTTP Attempted to serve root with unknown path %s\n", r.URL.String())
 	handleNotFoundReq(w, r)
 }
 
@@ -143,12 +145,12 @@ func handleStaticReq(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(r.URL.String()) == 0 {
-		log.Printf("Static file requested, but request was empty\n")
+		log.Printf("HTTP Static file requested, but request was empty\n")
 		handleNotFoundReq(w, r)
 		return
 	}
 
-	log.Printf("Attempting to serve static file without map %q\n", RootHTMLPath+r.URL.String())
+	log.Printf("HTTP Attempting to serve static file without map %q\n", RootHTMLPath+r.URL.String())
 	http.ServeFile(w, r, RootHTMLPath+r.URL.String())
 }
 
