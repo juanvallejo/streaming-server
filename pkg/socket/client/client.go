@@ -36,7 +36,7 @@ type Response struct {
 // New receives a socket.io client connection and creates
 // a new socket client, containing information about a
 // unique socket client connection.
-func New(conn sockio.Socket) *Client {
+func NewClient(conn sockio.Socket) *Client {
 	return &Client{
 		connection: conn,
 		usernames:  make([]string, 0, MAX_USERNAME_HIST),
@@ -49,11 +49,6 @@ func (c *Client) GetId() string {
 }
 
 func (c *Client) UpdateUsername(username string) error {
-	current, hasCurrent := c.GetUsername()
-	if hasCurrent && username == current {
-		return fmt.Errorf("You already have that username")
-	}
-
 	if _, ok := RESERVED_USERNAMES[strings.ToLower(username)]; ok {
 		return fmt.Errorf("You may not use that username")
 	}
@@ -74,7 +69,7 @@ func (c *Client) UpdateUsername(username string) error {
 }
 
 // GetUsername returns the currently active username for a client
-// or a bool (false) if client has no previous username history
+// or a bool (false) if client has no username history
 func (c *Client) GetUsername() (string, bool) {
 	if len(c.usernames) == 0 {
 		return "", false
@@ -84,7 +79,7 @@ func (c *Client) GetUsername() (string, bool) {
 }
 
 // GetPreviousUsername returns the last active username for a client
-// or a bool (false) if 0 or 1 total usernames have been recorded
+// or a bool (false) if 0 or 1 total usernames have been recorded so far
 func (c *Client) GetPreviousUsername() (string, bool) {
 	if len(c.usernames) < 2 {
 		return "", false
@@ -151,6 +146,20 @@ func (c *Client) BroadcastSystemMessageTo(msg string) {
 	})
 }
 
+func (c *Client) BroadcastChatActionTo(methodName string, args []interface{}) {
+	if args == nil {
+		args = []interface{}{}
+	}
+
+	c.BroadcastTo("chatmethodaction", &Response{
+		From: USER_SYSTEM,
+		Extra: map[string]interface{}{
+			"methodname": methodName,
+			"args":       args,
+		},
+	})
+}
+
 // UsernameEquals implements a quick comparison between two clients.
 // ClientA is only equal to ClientB if and only if their
 // currently active username strings match.
@@ -207,4 +216,9 @@ func (c *Client) GetRoom() (string, bool) {
 	}
 
 	return c.room, true
+}
+
+// GetConnection returns the socket connection for the current client
+func (c *Client) GetConnection() sockio.Socket {
+	return c.connection
 }

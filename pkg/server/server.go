@@ -9,7 +9,6 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/api"
 	"github.com/juanvallejo/streaming-server/pkg/socket"
-	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
 const (
@@ -28,7 +27,6 @@ type ServerOptions struct {
 	Out           io.Writer
 	Port          string
 	SocketHandler *socket.Socket
-	Stream        *stream.Stream
 
 	server *http.Server
 }

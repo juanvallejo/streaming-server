@@ -1,14 +1,18 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/client"
+	"github.com/juanvallejo/streaming-server/pkg/stream/playback"
+)
 
 type SocketCommand interface {
 	// Execute runs a SocketCommand's main logic
 	// returns an error if a problem occurs during
 	// command execution, or a string ("status")
 	// containing the return value for the command
-	Execute(handler SocketCommandHandler) (string, error)
-
+	Execute(SocketCommandHandler, []string, *client.Client, client.SocketClientHandler, playback.StreamPlaybackHandler) (string, error)
 	// GetName returns the command's unique string identifier
 	GetName() string
 	// GetDescription returns the command's summarized readme
@@ -27,7 +31,7 @@ type Command struct {
 	description string
 }
 
-func (c *Command) Execute(handler SocketCommandHandler) (string, error) {
+func (c *Command) Execute(cmdHandler SocketCommandHandler, args []string, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) (string, error) {
 	return "", fmt.Errorf("unimplemented command.")
 }
 

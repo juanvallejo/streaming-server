@@ -14,17 +14,15 @@ import (
 type Socket struct {
 	ConnectionHandler *connHandler
 	SocketServer      *sockio.Server
-	StreamPlayback    *playback.Playback
 }
 
 // New creates a socket server connection handler
-func New(server *sockio.Server, playback *playback.Playback) *Socket {
+func New(server *sockio.Server, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) *Socket {
 	return &Socket{
 		ConnectionHandler: &connHandler{
-			clientsById: make(map[string]*client.Client),
-
-			CommandHandler: cmd.NewHandler(),
-			StreamPlayback: playback,
+			clientHandler:   clientHandler,
+			CommandHandler:  commandHandler,
+			PlaybackHandler: playbackHandler,
 		},
 		SocketServer: server,
 	}
