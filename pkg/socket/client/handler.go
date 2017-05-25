@@ -1,0 +1,77 @@
+package client
+
+import (
+	"fmt"
+	"log"
+
+	sockio "github.com/googollee/go-socket.io"
+)
+
+type SocketClientHandler interface {
+	// CreateClient receives a socket connection, creates a Client,
+	// and adds it to an internal map. The new created Client is returned.
+	CreateClient(sockio.Socket) *Client
+	// DestroyClient receives a socket connection, finds a Client by its id,
+	// removes it from its room (if joined), and deletes the Client from an
+	// internal map. If no client exists by that id, an error is returned.
+	DestroyClient(sockio.Socket) error
+	// GetClient receives a client's string id, and returns a Client instance
+	// associated with that id, or an error if no client by that id is found.
+	GetClient(string) (*Client, error)
+	// GetClientSize returns the amount of Client instances saved in the internal map
+	GetClientSize() int
+	// GetClients returns a slice of Client instances saved in the internal map
+	GetClients() []*Client
+}
+
+// Handler implements ClientHandler
+type Handler struct {
+	clientsById map[string]*Client
+}
+
+func (h *Handler) CreateClient(socket sockio.Socket) *Client {
+	log.Printf("SOCKET CLIENT registering client with id %q\n", socket.Id())
+
+	c := NewClient(socket)
+	h.clientsById[socket.Id()] = c
+
+	return c
+}
+
+func (h *Handler) DestroyClient(socket sockio.Socket) error {
+	id := socket.Id()
+	if c, ok := h.clientsById[id]; ok {
+		if room, inRoom := c.GetRoom(); inRoom {
+			socket.Leave(room)
+		}
+
+		delete(h.clientsById, id)
+		return nil
+	}
+	return fmt.Errorf("client with id %q does not exist", id)
+}
+
+func (h *Handler) GetClient(id string) (*Client, error) {
+	if c, found := h.clientsById[id]; found {
+		return c, nil
+	}
+	return nil, fmt.Errorf("client with id %q does not exist", id)
+}
+
+func (h *Handler) GetClients() []*Client {
+	clients := make([]*Client, 0, len(h.clientsById))
+	for _, c := range h.clientsById {
+		clients = append(clients, c)
+	}
+	return clients
+}
+
+func (h *Handler) GetClientSize() int {
+	return len(h.clientsById)
+}
+
+func NewHandler() *Handler {
+	return &Handler{
+		clientsById: make(map[string]*Client),
+	}
+}
