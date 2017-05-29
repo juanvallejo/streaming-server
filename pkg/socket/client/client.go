@@ -202,6 +202,8 @@ func (c *Client) UsernameEqualsPrevious(c2 *Client) bool {
 	return false
 }
 
+// JoinRoom assigns a client to a channel named after their current
+// fully qualified room name.
 func (c *Client) JoinRoom(room string) {
 	c.connection.Join(room)
 	c.room = room

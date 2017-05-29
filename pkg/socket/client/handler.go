@@ -2,7 +2,6 @@ package client
 
 import (
 	"fmt"
-	"log"
 
 	sockio "github.com/googollee/go-socket.io"
 )
@@ -30,8 +29,6 @@ type Handler struct {
 }
 
 func (h *Handler) CreateClient(socket sockio.Socket) *Client {
-	log.Printf("SOCKET CLIENT registering client with id %q\n", socket.Id())
-
 	c := NewClient(socket)
 	h.clientsById[socket.Id()] = c
 

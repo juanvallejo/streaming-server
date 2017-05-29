@@ -23,24 +23,25 @@ const (
 )
 
 type ServerOptions struct {
-	Host          string
-	Out           io.Writer
-	Port          string
-	SocketHandler *socket.Socket
+	Host string
+	Out  io.Writer
+	Port string
 
-	server *http.Server
+	Server *http.Server
 }
 
 // map of req strings to file names
 var fileHandlers map[string]string
 var reqHandlers map[string]func(http.ResponseWriter, *http.Request)
 
-// HTTPSocketHandler handles http and socket.io requests
-type HTTPSocketHandler struct {
-	socketHandler *socket.Socket
+// Handler handles http and socket.io requests
+type Handler struct {
+	socketServer *socket.Server
 }
 
-func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("HTTP handling request %q", r.URL.String())
+
 	if h, ok := reqHandlers[r.URL.String()]; ok {
 		h(w, r)
 		return
@@ -48,8 +49,8 @@ func (h *HTTPSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// handle socket.io endpoint requests
 	if strings.HasPrefix(r.URL.String(), socketBaseUrl) {
-		if h.socketHandler != nil {
-			h.socketHandler.HandleRequest(w, r)
+		if h.socketServer != nil {
+			h.socketServer.HandleRequest(w, r)
 			return
 		}
 	}
@@ -87,7 +88,7 @@ func addHandlers() {
 // New creates a new server from server options
 // and ensures that at least a host and a port
 // have been set.
-func New(opts *ServerOptions) *ServerOptions {
+func NewServer(socketServer *socket.Server, opts *ServerOptions) *ServerOptions {
 	if len(opts.Port) == 0 {
 		opts.Port = defaultPort
 	}
@@ -97,13 +98,12 @@ func New(opts *ServerOptions) *ServerOptions {
 	if opts.Out == nil {
 		panic("No output method defined.")
 	}
-	if opts.server == nil {
-		opts.server = &http.Server{
-			Addr: opts.getAddr(),
-			Handler: &HTTPSocketHandler{
-				socketHandler: opts.SocketHandler,
-			},
-		}
+
+	opts.Server = &http.Server{
+		Addr: opts.getAddr(),
+		Handler: &Handler{
+			socketServer: socketServer,
+		},
 	}
 
 	addHandlers()
@@ -114,7 +114,7 @@ func New(opts *ServerOptions) *ServerOptions {
 func (s *ServerOptions) Serve() {
 	log.Printf("HTTP Serving on %s\n", s.getAddr())
 
-	err := s.server.ListenAndServe()
+	err := s.Server.ListenAndServe()
 	if err != nil {
 		panic(err.Error())
 	}

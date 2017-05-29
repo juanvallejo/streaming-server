@@ -3,9 +3,11 @@ package util
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
+	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
-	"github.com/juanvallejo/streaming-server/pkg/stream/playback"
 	"github.com/juanvallejo/streaming-server/pkg/validation"
 )
 
@@ -43,12 +45,21 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 		return err
 	}
 
-	// update startedBy information before updating username
-	if refreshed := playbackHandler.RefreshInfoFromClient(c); refreshed {
-		log.Printf("SOCKET CLIENT detected client with id %q to have begun playback. Updating playback info to match client's updated username.", c.GetId())
+	userRoom, hasRoom := c.GetRoom()
+	if hasRoom {
+		if sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom); sPlaybackExists {
+			// update startedBy information before updating username
+			if refreshed := sPlayback.RefreshInfoFromClient(c); refreshed {
+				log.Printf("SOCKET CLIENT detected client with id %q to have begun playback. Updating playback info to match client's updated username.", c.GetId())
+			}
+		} else {
+			log.Printf("SOCKET CLIENT WARN unable to determine StreamPlayback associated with client %q (%s). Unable to refresh client information stored in stream playback.", c.GetId(), username)
+		}
+	} else {
+		log.Printf("SOCKET CLIENT WARN client with id %q (%s) has no room assigned. Unable to refresh client information in stream playback.", c.GetId(), username)
 	}
 
-	log.Printf("SOCKET CLIENT sending \"updateusername\" (%q) event to client with id %q\n", username, c.GetId())
+	log.Printf("SOCKET CLIENT sending \"updateusername\" event to client with id %q (%s)\n", c.GetId(), username)
 	c.BroadcastTo("updateusername", &client.Response{
 		From: username,
 	})
@@ -78,4 +89,13 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 	})
 
 	return nil
+}
+
+func GetCurrentDirectory() string {
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		panic(fmt.Sprintf("unable to get filepath: %v", err))
+	}
+
+	return dir
 }

@@ -5,30 +5,27 @@ import (
 	"net/http"
 
 	sockio "github.com/googollee/go-socket.io"
-
-	"github.com/juanvallejo/streaming-server/pkg/socket/client"
-	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
-	"github.com/juanvallejo/streaming-server/pkg/stream/playback"
 )
 
-type Socket struct {
-	ConnectionHandler *connHandler
-	SocketServer      *sockio.Server
+type Server struct {
+	*sockio.Server
 }
 
-// New creates a socket server connection handler
-func New(server *sockio.Server, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) *Socket {
-	return &Socket{
-		ConnectionHandler: &connHandler{
-			clientHandler:   clientHandler,
-			CommandHandler:  commandHandler,
-			PlaybackHandler: playbackHandler,
-		},
-		SocketServer: server,
+func NewServer(transportNames []string, handler *Handler) (*Server, error) {
+	socketServer, err := sockio.NewServer(transportNames)
+	if err != nil {
+		return nil, err
 	}
+
+	s := &Server{
+		socketServer,
+	}
+	s.addServerHandlers(handler)
+
+	return s, nil
 }
 
-func (s *Socket) HandleRequest(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	origin := getClientOrigin(r)
 	log.Printf("SOCKET handling socket request for ref %q\n", origin)
 
@@ -36,8 +33,11 @@ func (s *Socket) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", origin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-	s.SocketServer.ServeHTTP(w, r)
-	s.SocketServer.On("connection", func(sockioconn sockio.Socket) {
-		s.ConnectionHandler.Handle(sockioconn)
+	s.ServeHTTP(w, r)
+}
+
+func (s *Server) addServerHandlers(handler *Handler) {
+	s.On("connection", func(sockioconn sockio.Socket) {
+		handler.HandleClientConnection(sockioconn)
 	})
 }

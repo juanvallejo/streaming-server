@@ -3,9 +3,10 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
-	"github.com/juanvallejo/streaming-server/pkg/stream/playback"
+	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
 type UserCmd struct {
@@ -18,7 +19,11 @@ const (
 	USER_USAGE       = "Usage: /" + USER_NAME + " (name &lt;username&gt;|list)"
 )
 
-func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) (string, error) {
+var (
+	user_aliases = []string{"u"}
+)
+
+func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
 		return h.usage, nil
 	}
@@ -37,6 +42,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 	}
 
+	// TODO: only list users in room; not global
 	if args[0] == "list" {
 		userName, userHasName := user.GetUsername()
 
@@ -67,6 +73,8 @@ func NewCmdUser() SocketCommand {
 			name:        USER_NAME,
 			description: USER_DESCRIPTION,
 			usage:       USER_USAGE,
+
+			aliases: user_aliases,
 		},
 	}
 }
