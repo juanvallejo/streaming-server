@@ -1,10 +1,9 @@
 package playback
 
-
 type StreamPlaybackHandler interface {
 	// NewStreamPlayback receives a playback id and instantiates a new StreamPlayback
 	// object used to keep track of individual user-created stream sessions.
-	// A playback id should be a fully-qualified room name
+	// A playback id should be a fully-qualified room name.
 	NewStreamPlayback(string) *StreamPlayback
 	// GetStreamPlayback receives a StreamPlayback id (usually a fully qualified room name)
 	// and retrieves a StreamPlayback object corresponding to that room.

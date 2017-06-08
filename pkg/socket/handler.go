@@ -21,8 +21,10 @@ type Handler struct {
 	StreamHandler   stream.StreamHandler
 }
 
-const ROOM_URL_SEGMENT = "/v/"
-const ROOM_DEFAULT_LOBBY = "lobby"
+const (
+	ROOM_DEFAULT_LOBBY           = "lobby"
+	ROOM_DEFAULT_STREAMSYNC_RATE = 30 // send streamsync to clients every 30 seconds
+)
 
 func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 	log.Printf("SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
@@ -79,7 +81,8 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR %v", err)
+			log.Printf("SOCKET CLIENT ERR could not retrieve client. Ignoring request_chatmessage request: %v", err)
+			return
 		}
 
 		err, command, isCommand := h.ParseCommandMessage(c, data)
@@ -117,6 +120,32 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 
 		fmt.Printf("SOCKET CLIENT INFO chatmessage received %v\n", data)
 	})
+
+	conn.On("request_streamsync", func(data map[string]interface{}) {
+		log.Printf("SOCKET CLIENT INFO client with id %q requested a streamsync", conn.Id())
+
+		c, err := h.clientHandler.GetClient(conn.Id())
+		if err != nil {
+			log.Printf("SOCKET CLIENT ERR unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			return
+		}
+
+		roomName, exists := c.GetRoom()
+		if !exists {
+			log.Printf("SOCKET CLIENT ERR client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+			return
+		}
+
+		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+		if !exists {
+
+		}
+
+		c.BroadcastTo("streamsync", &client.Response{
+			Id:    c.GetId(),
+			Extra: sPlayback.GetStatus(),
+		})
+	})
 }
 
 // ParseCommandMessage receives a client pointer and a data map sent by a client
@@ -151,28 +180,43 @@ func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]int
 // 1. create a streamPlayback object whose "id" becomes the room's name
 // 2.
 func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
-	req := sockioconn.Request()
-	segs := strings.Split(req.Referer(), ROOM_URL_SEGMENT)
-	roomName := ROOM_DEFAULT_LOBBY
+	log.Printf("SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
 
-	// if more than one url segment in url string with valid ROOM_URL_SEGMENT,
-	// user can be safely assumed to be in a valid "streaming room"
-	if len(segs) > 1 {
-		roomName = segs[1]
-		log.Printf("SOCKET CLIENT assigning client to room with name %q", roomName)
-	} else {
-		log.Printf("SOCKET CLIENT WARN websocket connection initiated outside of a valid room. Assigning default lobby room %q.", roomName)
+	roomName, err := util.GetRoomNameFromRequest(sockioconn.Request())
+	if err != nil {
+		log.Printf("SOCKET CLIENT WARN websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
+		roomName = ROOM_DEFAULT_LOBBY
 	}
 
-	log.Printf("SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
+	log.Printf("SOCKET CLIENT assigning client to room with name %q", roomName)
 
 	c := h.clientHandler.CreateClient(sockioconn)
 	c.JoinRoom(roomName)
 
+	c.BroadcastFrom("info_clientjoined", &client.Response{
+		Id: c.GetId(),
+	})
+
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 	if !exists {
 		log.Printf("SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
-		h.PlaybackHandler.NewStreamPlayback(roomName)
+		sPlayback = h.PlaybackHandler.NewStreamPlayback(roomName)
+		sPlayback.OnTick(func(currentTime int) {
+			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
+				return
+			}
+
+			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+			if !exists {
+				log.Printf("CALLBACK-PLAYBACK SOCKET CLIENT ERR attempted to send streamsync event to client, but stream playback does not exist.")
+			}
+
+			log.Printf("CALLBACK-PLAYBACK SOCKET CLIENT INFO streamsync event sent after %v seconds", currentTime)
+			c.BroadcastAll("streamsync", &client.Response{
+				Id:    sockioconn.Id(),
+				Extra: currPlayback.GetStatus(),
+			})
+		})
 
 		return
 	}

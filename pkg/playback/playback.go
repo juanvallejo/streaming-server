@@ -72,6 +72,12 @@ func (p *StreamPlayback) GetTime() int {
 	return p.timer.GetTime()
 }
 
+// OnTick calls the playback object's timer object and sets its
+// "tick" callback function; called every tick increment interval.
+func (p *StreamPlayback) OnTick(callback TimerCallback) {
+	p.timer.OnTick(callback)
+}
+
 // GetStream returns a stream.Stream object containing current stream data
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback

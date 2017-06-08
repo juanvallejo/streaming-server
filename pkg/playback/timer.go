@@ -12,14 +12,17 @@ const (
 	TIMER_STOP
 )
 
+type TimerCallback func(int)
+
 // Timer keeps track of playback time
 type Timer struct {
-	time int
-	status int
+	time     int
+	status   int
+	callback TimerCallback
 	timeChan chan int
 }
 
-func (t * Timer) Play() error {
+func (t *Timer) Play() error {
 	if t.timeChan == nil {
 		panic("attempt to start a nil timer channel")
 	}
@@ -34,7 +37,7 @@ func (t * Timer) Play() error {
 	return nil
 }
 
-func (t * Timer) Stop() error {
+func (t *Timer) Stop() error {
 	if t.timeChan == nil {
 		panic("attempt to stop a nil timer channel")
 	}
@@ -49,7 +52,7 @@ func (t * Timer) Stop() error {
 	return nil
 }
 
-func (t * Timer) Pause() error {
+func (t *Timer) Pause() error {
 	if t.timeChan == nil {
 		panic("attempt to pause a nil timer channel")
 	}
@@ -72,6 +75,10 @@ func (t *Timer) Set(time int) error {
 	return nil
 }
 
+func (t *Timer) OnTick(callback TimerCallback) {
+	t.callback = callback
+}
+
 func (t *Timer) GetTime() int {
 	return t.time
 }
@@ -81,7 +88,8 @@ func (t *Timer) GetStatus() int {
 }
 
 // Increment is a convenience function for incrementing
-// a timer's time value every second.
+// a timer's time value every second. If a timer.callback
+// func exists, it is called every increment interval.
 // Warning: this is not a concurrency-safe function
 func Increment(timer *Timer, c chan int) {
 	if timer == nil {
@@ -90,6 +98,10 @@ func Increment(timer *Timer, c chan int) {
 
 	time.Sleep(time.Duration(1 * time.Second))
 	timer.time++
+
+	if timer.callback != nil {
+		timer.callback(timer.time)
+	}
 
 	select {
 	case sig := <-c:
@@ -106,7 +118,7 @@ func Increment(timer *Timer, c chan int) {
 
 func NewTimer() *Timer {
 	return &Timer{
-		status: TIMER_STOP,
+		status:   TIMER_STOP,
 		timeChan: make(chan int),
 	}
 }

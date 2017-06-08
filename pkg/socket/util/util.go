@@ -3,13 +3,17 @@ package util
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/validation"
 )
+
+const ROOM_URL_SEGMENT = "/v/"
 
 func UpdateClientUsername(c *client.Client, username string, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) error {
 	err := validation.ValidateClientUsername(username)
@@ -89,6 +93,17 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 	})
 
 	return nil
+}
+
+// GetRoomNameFromRequest receives a socket connection request and returns
+// a fully-qualified room name from the request's referer information
+func GetRoomNameFromRequest(req *http.Request) (string, error) {
+	segs := strings.Split(req.Referer(), ROOM_URL_SEGMENT)
+	if len(segs) > 1 {
+		return segs[1], nil
+	}
+
+	return "", fmt.Errorf("http request referer field (%s) had an unsupported ROOM_URL_SEGMENT(%q) format", req.Referer(), ROOM_URL_SEGMENT)
 }
 
 func GetCurrentDirectory() string {
