@@ -14,7 +14,7 @@ const ApiSuffix = "/api"
 
 var registeredEndpoints map[string]func(w http.ResponseWriter, r *http.Request)
 
-func HandleRequest(w http.ResponseWriter, r *http.Request) {
+func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasSuffix(r.URL.String(), ApiSuffix) {
 		panic("API Request could not be handled for non api-formatted url")
 	}

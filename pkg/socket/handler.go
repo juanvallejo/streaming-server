@@ -3,6 +3,7 @@ package socket
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	sockio "github.com/googollee/go-socket.io"
@@ -19,6 +20,8 @@ type Handler struct {
 	CommandHandler  cmd.SocketCommandHandler
 	PlaybackHandler playback.StreamPlaybackHandler
 	StreamHandler   stream.StreamHandler
+
+	server *Server
 }
 
 const (
@@ -241,11 +244,31 @@ func (h *Handler) DeregisterClient(sockioconn sockio.Socket) error {
 	return nil
 }
 
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.server.ServeHTTP(w, r)
+}
+
 func NewHandler(commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) *Handler {
-	return &Handler{
+	socketServer, err := NewServer(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	handler := &Handler{
 		clientHandler:   clientHandler,
 		CommandHandler:  commandHandler,
 		PlaybackHandler: playbackHandler,
 		StreamHandler:   streamHandler,
+
+		server: socketServer,
 	}
+
+	handler.addRequestHandlers()
+	return handler
+}
+
+func (h *Handler) addRequestHandlers() {
+	h.server.On("connection", func(sockioconn sockio.Socket) {
+		h.HandleClientConnection(sockioconn)
+	})
 }

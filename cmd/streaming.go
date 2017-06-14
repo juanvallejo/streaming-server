@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
@@ -16,19 +15,11 @@ import (
 func main() {
 	flag.Parse()
 
-	//socketServer, err := socket.NewServer(nil)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-
 	socketHandler := socket.NewHandler(cmd.NewHandler(), client.NewHandler(), playback.NewHandler(), stream.NewHandler())
-	socketServer, err := socket.NewServer(nil, socketHandler)
-	if err != nil {
-		log.Fatal(err)
-	}
+	requestHandler := server.NewRequestHandler(socketHandler)
 
 	// init http server with socket.io support
-	application := server.NewServer(socketServer, &server.ServerOptions{
+	application := server.NewServer(requestHandler, &server.ServerOptions{
 		Port: "8080",
 		Host: "0.0.0.0",
 		Out:  os.Stdout,
