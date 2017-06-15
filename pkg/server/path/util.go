@@ -3,6 +3,7 @@ package path
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func FilePathFromRequest(r *http.Request) string {
@@ -15,4 +16,19 @@ func FilePathFromUrl(url string) string {
 
 func FilePathFromFilename(fname string) string {
 	return fmt.Sprintf("%s%s/%s", FileRootPath, FileRootUrl, fname)
+}
+
+func StreamDataFilePathFromUrl(url string) string {
+	return StreamDataRootPath + "/" + StreamDataFilenameFromUrl(url)
+}
+
+// StreamDataFilenameFromUrl receives a stream-formatted request url and
+// returns its last segment, or the original url if the path is malformed.
+func StreamDataFilenameFromUrl(url string) string {
+	segs := strings.Split(url, "/")
+	if len(segs) == 0 {
+		return url
+	}
+
+	return segs[len(segs)-1]
 }

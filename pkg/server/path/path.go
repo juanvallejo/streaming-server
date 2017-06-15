@@ -13,11 +13,14 @@ var (
 	ApiRootUrl    = "/api"
 	FileRootUrl   = "/src/static"
 	SocketRootUrl = "/socket.io"
-	RoomRootUrl   = "/v/"
+	RoomRootUrl   = "/room"
+	StreamRootUrl = "/stream"
 
-	RoomRootRegex = "^\\/v\\/.*"
+	RoomRootRegex   = "^\\/v\\/.*"
+	StreamRootRegex = "^\\/s\\/.*"
 
-	FileRootPath = "pkg/webclient"
+	StreamDataRootPath = "data"
+	FileRootPath       = "pkg/webclient"
 )
 
 // Path is an interface representing an http url handler
@@ -70,4 +73,11 @@ func NewPathError() ErrorPathHandler {
 			pathUrl: ErrorPathUrl,
 		},
 	}
+}
+
+func HandleInvalidRange(w http.ResponseWriter, r *http.Request) {
+	log.Printf("ERR HTTP PATH could not handle request with invalid range")
+
+	w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+	io.WriteString(w, "invalid range")
 }

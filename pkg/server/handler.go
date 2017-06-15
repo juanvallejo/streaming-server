@@ -11,13 +11,26 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/socket"
 )
 
-// RequestHandler implements http.Handler and provides additional websocket request handling
+// RequestHandler implements http.Handler and provides additional websocket request handling.
+// It also stores generic path handlers for request not matching a specific set of criteria.
 type RequestHandler struct {
 	router         *RequestRouter
 	paths          map[string]path.Path
 	sockReqHandler *socket.Handler
 }
 
+// ServeHTTP handles incoming http requests. A request is handled based on its
+// url string. The following steps are taken when evaluating a request's url:
+//   1. If a url's prefix or pattern matches a socket.io request pattern ("/socker.io/...")
+//      then the socketRequestHandler is relayed the request altogether.
+//   2. If a socketRequestHandler has not been defined, or the url matches a file-root
+//      location pattern ("/src/static/...") then it is served as a static file.
+//   3. If a url matches a room request regex pattern ("/v/..."), then the room index file
+//      is served back to the client.
+//   4. If a url begins with an api request prefix ("/api/..."), then the api handler
+//      is relayed the request entirely.
+//	 5. If a url does not match any of the above patterns, it is then treated as a generic
+// 		"path", which requires a path-handler for that specific url to have been registered.
 func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	url := h.router.Route(r.URL.String())
 
@@ -44,7 +57,14 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// handle wildcard urls for api requests
+	// handle wildcard urls for streams
+	reg = regexp.MustCompile(path.StreamRootRegex)
+	if reg.MatchString(url) {
+		h.HandleStream(url, w, r)
+		return
+	}
+
+	// handle urls for api requests
 	if strings.HasPrefix(url, path.ApiRootUrl) {
 		api.ServeHTTP(w, r)
 		return
@@ -108,13 +128,12 @@ func (h *RequestHandler) HandleFile(url string, w http.ResponseWriter, r *http.R
 
 func (h *RequestHandler) HandleRoom(url string, w http.ResponseWriter, r *http.Request) {
 	log.Printf("INFO HTTP PATH handler for path with url %q matched room name pattern", url)
+	h.HandlePath(path.RoomRootUrl, w, r)
+}
 
-	if p, exists := h.paths[path.RoomRootUrl]; exists {
-		p.Handle(url, w, r)
-		return
-	}
-
-	log.Printf("WARN HTTP PATH handler for room path request (%q) not found", url)
+func (h *RequestHandler) HandleStream(url string, w http.ResponseWriter, r *http.Request) {
+	log.Printf("INFO HTTP PATH handler for path with url %q matched stream name pattern", url)
+	h.HandlePath(path.StreamRootUrl, w, r)
 }
 
 func (h *RequestHandler) RegisterPath(p path.Path) {
@@ -136,4 +155,5 @@ func addRequestHandlers(handler *RequestHandler) {
 	handler.RegisterPath(path.NewPathError())
 	handler.RegisterPath(path.NewPathRoot())
 	handler.RegisterPath(path.NewPathRoom())
+	handler.RegisterPath(path.NewPathStream())
 }
