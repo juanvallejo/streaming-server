@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 )
 
-var maxChunkSize int64 = 20000000
+var maxByteRange int64 = 20000000
+var maxChunkSize int = 4096
 
 // RoomPathHandler implements Path
 // and handles all room url requests
@@ -26,8 +26,8 @@ func (h StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Req
 	fileStat, err := os.Stat(fpath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			p404 := NewPathNotFound()
-			return p404.Handle(fpath, w, r)
+			HandleNotFound(url, w, r)
+			return nil
 		}
 
 		return err
@@ -51,19 +51,18 @@ func (h StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Req
 	}
 
 	if startPos > endPos {
-		HandleInvalidRange(w, r)
+		HandleInvalidRange("range start position is greater than ending position.", w, r)
 		return nil
 	}
 
-	if endPos-startPos > maxChunkSize {
-		endPos = startPos + maxChunkSize
+	if endPos-startPos > maxByteRange {
+		endPos = startPos + maxByteRange
 	}
 
-	chunkSize := endPos - startPos + 1
-	mimeType := mime.TypeByExtension(fileExtensionFromUrl(fpath))
-	if len(mimeType) == 0 {
-		log.Printf("ERR HTTP PATH unable to calculate mimetype for file %q", fpath)
-		return fmt.Errorf("unable to calculate mimetype for file %q", fpath)
+	byteRangeSize := endPos - startPos + 1
+	mimeType, err := FileMimeFromFilePath(fpath)
+	if err != nil {
+		return err
 	}
 
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %v-%v/%v", startPos, endPos, fileStat.Size()))
@@ -73,24 +72,33 @@ func (h StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Req
 
 	file, err := os.Open(fpath)
 	if err != nil {
-		log.Printf("ERR HTTP PATH unable to open requested stream file %q: %v", fileStat.Name(), err)
 		return err
 	}
 	defer file.Close()
 
-	log.Printf("INFO HTTP PATH serving requested file (%s) with a chunk size of %v bytes", fileStat.Name(), chunkSize)
+	log.Printf("INFO HTTP PATH serving requested file (%s) with a byte-range size of %v bytes", fileStat.Name(), byteRangeSize)
 
-	// if chunkSize is less than maxChunkSize, read byte range
-	// from file, and stream byte range to client
-	contents := make([]byte, chunkSize)
-	n, err := file.ReadAt(contents, startPos)
-	if err != nil {
-		if err != io.EOF && n == 0 {
-			return err
-		}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("expected http.ResponseWriter to implement http.Flusher")
 	}
 
-	w.Write(contents)
+	buff := make([]byte, maxChunkSize)
+	totalRead := int64(0)
+	for totalRead < byteRangeSize {
+		n, err := file.ReadAt(buff, totalRead+startPos)
+		if err != nil {
+			if err != io.EOF && n == 0 {
+				return err
+			}
+		}
+
+		totalRead += int64(n)
+		w.Write(buff[0:n])
+
+		flusher.Flush()
+	}
+
 	return nil
 }
 
@@ -100,9 +108,4 @@ func NewPathStream() StreamPathHandler {
 			pathUrl: StreamRootUrl,
 		},
 	}
-}
-
-func fileExtensionFromUrl(url string) string {
-	segs := strings.Split(url, ".")
-	return "." + segs[len(segs)-1]
 }
