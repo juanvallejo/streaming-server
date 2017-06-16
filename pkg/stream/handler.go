@@ -2,7 +2,11 @@ package stream
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
+
+	"github.com/juanvallejo/streaming-server/pkg/server/path"
 )
 
 const (
@@ -63,11 +67,23 @@ func (h *Handler) NewStream(url string) (Stream, error) {
 		return nil, fmt.Errorf("error: stream resource location interpreted as url, but stream source is not supported for: %q", url)
 	}
 
-	// TODO: restore this block once serving frontend as well
-	//_, err := os.Stat(url)
-	//if err != nil {
-	//	return nil, fmt.Errorf("error: stream resource location interpreted as local filepath, but local file %q  was not found", url)
-	//}
+	fpath := path.StreamDataFilePathFromFilename(url)
+
+	// determine if a mimetype can be determined from the requested filepath,
+	// and that the mimetype (if any) is supported.
+	mimeType, err := path.FileMimeFromFilePath(url)
+	if err != nil || !strings.HasPrefix(mimeType, "video") {
+		log.Printf("ERR SOCKET CLIENT error parsing file mimetype (%q): %v", mimeType, err)
+		return nil, fmt.Errorf("unable to load %q. Unsupported streaming file.", url)
+	}
+
+	_, err = os.Stat(fpath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("unable to load %q: video file does not exist.", url)
+		}
+		return nil, fmt.Errorf("unable to load %q: %v", url, err)
+	}
 
 	s := NewLocalVideoStream(url)
 	h.streams[url] = s

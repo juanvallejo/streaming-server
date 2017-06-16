@@ -89,7 +89,7 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 // and instantia
 func (p *StreamPlayback) LoadStream(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
-		log.Printf("PLAYBACK found existing stream object with url %q, loading...", url)
+		log.Printf("INFO PLAYBACK found existing stream object with url %q, loading...", url)
 		p.stream = s
 		return s, nil
 	}
@@ -99,7 +99,7 @@ func (p *StreamPlayback) LoadStream(url string, streamHandler stream.StreamHandl
 		return nil, err
 	}
 
-	log.Printf("PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
+	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
 
 	p.stream = s
 	return s, nil

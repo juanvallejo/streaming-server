@@ -78,47 +78,26 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // If an error occurs while handling a path, a boolean true is
 // returned, as the path exists, and the error is returned.
 func (h *RequestHandler) HandlePath(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("INFO HTTP PATH handling path with url %q", url)
+	log.Printf("INFO HTTP PATH handling path with url %q", r.URL.String())
 
 	p, exists := h.paths[url]
 	if !exists {
-		h.HandleNotFound(url, w, r)
+		path.HandleNotFound(url, w, r)
 		return
 	}
 
 	err := p.Handle(url, w, r)
 	if err != nil {
-		h.HandleError(url, w, r)
+		log.Printf("ERR HTTP PATH error handling request (%s): %v", r.URL.String(), err)
+		path.HandleServerError(url, w, r)
 		return
 	}
-}
-
-func (h *RequestHandler) HandleError(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("ERR HTTP PATH handling error; ocurred handling url %q", r.URL.String())
-
-	if p500, exists := h.paths[path.ErrorPathUrl]; exists {
-		p500.Handle(url, w, r)
-		return
-	}
-
-	log.Fatal("request handler has no path error handler")
-}
-
-func (h *RequestHandler) HandleNotFound(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("WARN HTTP PATH handler for path with url %q was not found", url)
-
-	if p404, exists := h.paths[path.NotFoundPathUrl]; exists {
-		p404.Handle(url, w, r)
-		return
-	}
-
-	log.Fatal("request handler has no path-not-found handler")
 }
 
 func (h *RequestHandler) HandleFile(url string, w http.ResponseWriter, r *http.Request) {
 	if len(url) == 0 {
 		log.Printf("WARN HTTP Static file requested, but request was empty\n")
-		h.HandleNotFound(url, w, r)
+		path.HandleNotFound(url, w, r)
 		return
 	}
 
@@ -151,8 +130,6 @@ func NewRequestHandler(socketRequestHandler *socket.Handler) *RequestHandler {
 }
 
 func addRequestHandlers(handler *RequestHandler) {
-	handler.RegisterPath(path.NewPathNotFound())
-	handler.RegisterPath(path.NewPathError())
 	handler.RegisterPath(path.NewPathRoot())
 	handler.RegisterPath(path.NewPathRoom())
 	handler.RegisterPath(path.NewPathStream())

@@ -7,9 +7,6 @@ import (
 )
 
 var (
-	NotFoundPathUrl = "/404"
-	ErrorPathUrl    = "/500"
-
 	ApiRootUrl    = "/api"
 	FileRootUrl   = "/src/static"
 	SocketRootUrl = "/socket.io"
@@ -40,8 +37,7 @@ type PathHandler struct {
 }
 
 func (h PathHandler) Handle(url string, w http.ResponseWriter, r *http.Request) error {
-	w.WriteHeader(http.StatusNotFound)
-	io.WriteString(w, "404: page not found.")
+	HandleNotFound(url, w, r)
 	return nil
 }
 
@@ -49,35 +45,20 @@ func (h PathHandler) GetUrl() string {
 	return h.pathUrl
 }
 
-func NewPathNotFound() PathHandler {
-	return PathHandler{
-		pathUrl: NotFoundPathUrl,
-	}
-}
-
-type ErrorPathHandler struct {
-	PathHandler
-}
-
-func (h ErrorPathHandler) Handle(url string, w http.ResponseWriter, r *http.Request) error {
-	log.Printf("WARN HTTP PATH attempt to handle server error")
-
-	w.WriteHeader(http.StatusInternalServerError)
-	io.WriteString(w, "500: internal server error.")
-	return nil
-}
-
-func NewPathError() ErrorPathHandler {
-	return ErrorPathHandler{
-		PathHandler{
-			pathUrl: ErrorPathUrl,
-		},
-	}
-}
-
-func HandleInvalidRange(w http.ResponseWriter, r *http.Request) {
-	log.Printf("ERR HTTP PATH could not handle request with invalid range")
-
+func HandleInvalidRange(msg string, w http.ResponseWriter, r *http.Request) {
+	log.Printf("ERR HTTP PATH could not handle request with invalid range: %s", msg)
 	w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 	io.WriteString(w, "invalid range")
+}
+
+func HandleServerError(url string, w http.ResponseWriter, r *http.Request) {
+	log.Printf("ERR HTTP PATH server error occurred during request %q", url)
+	w.WriteHeader(http.StatusInternalServerError)
+	io.WriteString(w, "500: internal server error.")
+}
+
+func HandleNotFound(url string, w http.ResponseWriter, r *http.Request) {
+	log.Printf("WARN HTTP PATH handler for path with url %q was not found", url)
+	w.WriteHeader(http.StatusNotFound)
+	io.WriteString(w, "404: page not found.")
 }

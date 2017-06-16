@@ -2,6 +2,7 @@ package path
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 )
@@ -16,6 +17,23 @@ func FilePathFromUrl(url string) string {
 
 func FilePathFromFilename(fname string) string {
 	return fmt.Sprintf("%s%s/%s", FileRootPath, FileRootUrl, fname)
+}
+
+func FileMimeFromFilePath(fpath string) (string, error) {
+	mimeType := mime.TypeByExtension(FileExtensionFromFilePath(fpath))
+	if len(mimeType) == 0 {
+		return "", fmt.Errorf("unable to calculate mimetype for file %q", fpath)
+	}
+	return mimeType, nil
+}
+
+func FileExtensionFromFilePath(fpath string) string {
+	segs := strings.Split(fpath, ".")
+	return "." + segs[len(segs)-1]
+}
+
+func StreamDataFilePathFromFilename(fname string) string {
+	return StreamDataRootPath + "/" + fname
 }
 
 func StreamDataFilePathFromUrl(url string) string {
