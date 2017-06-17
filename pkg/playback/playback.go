@@ -12,6 +12,7 @@ import (
 // for every one stream
 type StreamPlayback struct {
 	id        string
+	queue     PlaybackQueue
 	stream    stream.Stream
 	startedBy string
 	timer     *Timer
@@ -65,6 +66,10 @@ func (p *StreamPlayback) Stop() error {
 	return p.timer.Stop()
 }
 
+func (p *StreamPlayback) Reset() error {
+	return p.timer.Set(0)
+}
+
 func (p *StreamPlayback) GetTime() int {
 	if p.timer == nil {
 		log.Panic("attempt was made to retrieve StreamPlayback Timer.time, but Timer.time was nil. Was StreamPlayback initialized properly?")
@@ -78,6 +83,21 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 	p.timer.OnTick(callback)
 }
 
+// QueueStreamUrl receives a stream url and pushes a loaded stream.Stream to the end of the playback queue
+func (p *StreamPlayback) QueueStreamFromUrl(url string, streamHandler stream.StreamHandler) error {
+	s, err := p.GetOrCreateStreamFromUrl(url, streamHandler)
+	if err != nil {
+		return err
+	}
+
+	p.queue.Push(s)
+	return nil
+}
+
+func (p *StreamPlayback) GetQueue() *PlaybackQueue {
+	return &p.queue
+}
+
 // GetStream returns a stream.Stream object containing current stream data
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback
@@ -85,12 +105,16 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 	return p.stream, p.stream != nil
 }
 
-// LoadStream receives a stream location (path, url, or unique identifier)
-// and instantia
-func (p *StreamPlayback) LoadStream(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
+// SetStream receives a stream.Stream and sets it as the currently-playing stream
+func (p *StreamPlayback) SetStream(s stream.Stream) {
+	p.stream = s
+}
+
+// GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)
+// and retrieves a corresponding stream.Stream, or creates a new one.
+func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
-		log.Printf("INFO PLAYBACK found existing stream object with url %q, loading...", url)
-		p.stream = s
+		log.Printf("INFO PLAYBACK found existing stream object with url %q, retrieving...", url)
 		return s, nil
 	}
 
@@ -100,8 +124,6 @@ func (p *StreamPlayback) LoadStream(url string, streamHandler stream.StreamHandl
 	}
 
 	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
-
-	p.stream = s
 	return s, nil
 }
 
@@ -137,5 +159,6 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	return &StreamPlayback{
 		id:    id,
 		timer: NewTimer(),
+		queue: NewQueue(),
 	}
 }

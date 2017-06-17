@@ -16,8 +16,8 @@ type StreamCmd struct {
 
 const (
 	STREAM_NAME        = "stream"
-	STREAM_DESCRIPTION = "controls stream playback (pause|play|stop|load)'"
-	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (pause|play|stop|info|set &lt;seconds&gt;|load &lt;url&gt;)"
+	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip)'"
+	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
 )
 
 var (
@@ -48,21 +48,46 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 	switch args[0] {
 	case "info":
+		// return stream playback info in the "Extra" field of a client.Response
 		output := "Stream playback info:<br />"
 		for k, v := range sPlayback.GetStatus() {
 			output += fmt.Sprintf("<br /><span class='text-hl-name'>%s</span>: %v", k, v)
 		}
 
 		return output, nil
-	case "load":
-		if len(args) < 2 || len(args[1]) == 0 {
-			return "", fmt.Errorf("error: a stream url must be provided")
+	case "skip":
+		// skip the currently-playing stream and replace it with the next item in the queue
+		queue := sPlayback.GetQueue()
+		nextStream, err := (*queue).Pop()
+		if err != nil {
+			return "", fmt.Errorf("error: %v", err)
 		}
-		s, err := sPlayback.LoadStream(args[1], streamHandler)
+
+		sPlayback.SetStream(*nextStream)
+		sPlayback.Reset()
+		sPlayback.UpdateStartedBy(user)
+
+		user.BroadcastAll("streamload", &client.Response{
+			Id:    user.GetId(),
+			From:  username,
+			Extra: (*nextStream).GetInfo(),
+		})
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, (*nextStream).GetStreamURL()))
+		return fmt.Sprintf("attempting to load the next item in the queue: %q", (*nextStream).GetStreamURL()), nil
+	case "set":
+		// skip adding a stream to the queue, and set as currently playing playback stream
+		url, err := getStreamUrlFromArgs(args)
 		if err != nil {
 			return "", err
 		}
 
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler)
+		if err != nil {
+			return "", err
+		}
+
+		sPlayback.SetStream(s)
+		sPlayback.Reset()
 		sPlayback.UpdateStartedBy(user)
 
 		user.BroadcastAll("streamload", &client.Response{
@@ -70,15 +95,30 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			From:  username,
 			Extra: s.GetInfo(),
 		})
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, s.GetKind(), args[1]))
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, s.GetKind(), url))
 
 		return fmt.Sprintf("attempting to load %q", args[1]), nil
+	case "queue":
+		// add a stream to the end of the queue
+		url, err := getStreamUrlFromArgs(args)
+		if err != nil {
+			return "", err
+		}
+
+		err = sPlayback.QueueStreamFromUrl(url, streamHandler)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, url))
+		return fmt.Sprintf("successfully queued %q", url), nil
+
 	}
 
 	// require stream data to have been loaded before proceeding with cases below
 	_, streamExists := sPlayback.GetStream()
 	if !streamExists {
-		return "", fmt.Errorf("error: no stream is currently loaded for your room - use /stream load &lt;url&gt;")
+		return "", fmt.Errorf("error: no stream is currently loaded for your room - use /stream set &lt;url&gt;")
 	}
 
 	switch args[0] {
@@ -109,7 +149,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			Extra: sPlayback.GetStatus(),
 		})
 		return "playing stream...", nil
-	case "set":
+	case "seek":
 		if len(args) < 2 || len(args[1]) == 0 {
 			return "", fmt.Errorf("a time (in seconds) must be provided. See usage info.")
 		}
@@ -142,4 +182,14 @@ func NewCmdStream() SocketCommand {
 			aliases: stream_aliases,
 		},
 	}
+}
+
+// receives a list of cmd args and returns the slice of the command corresponding to a stream url.
+// Returns an error if insufficient args are provided.
+func getStreamUrlFromArgs(args []string) (string, error) {
+	if len(args) < 2 || len(args[1]) == 0 {
+		return "", fmt.Errorf("error: a stream url must be provided")
+	}
+
+	return args[1], nil
 }
