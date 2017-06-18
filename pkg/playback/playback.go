@@ -70,10 +70,12 @@ func (p *StreamPlayback) Reset() error {
 	return p.timer.Set(0)
 }
 
+func (p *StreamPlayback) SetTime(newTime int) error {
+	p.timer.Set(newTime)
+	return nil
+}
+
 func (p *StreamPlayback) GetTime() int {
-	if p.timer == nil {
-		log.Panic("attempt was made to retrieve StreamPlayback Timer.time, but Timer.time was nil. Was StreamPlayback initialized properly?")
-	}
 	return p.timer.GetTime()
 }
 
@@ -137,6 +139,7 @@ func (p *StreamPlayback) GetStatus() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
+		"queueSize": p.queue.Size(),
 		"stream":    streamInfo,
 		"timer":     p.GetTime(),
 		"isPlaying": p.timer.GetStatus() == TIMER_PLAY,
@@ -144,11 +147,6 @@ func (p *StreamPlayback) GetStatus() map[string]interface{} {
 		"isPaused":  p.timer.GetStatus() == TIMER_PAUSE,
 		"startedBy": p.startedBy,
 	}
-}
-
-func (p *StreamPlayback) SetTime(newTime int) error {
-	p.timer.Set(newTime)
-	return nil
 }
 
 func NewStreamPlayback(id string) *StreamPlayback {

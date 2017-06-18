@@ -13,6 +13,8 @@ type PlaybackQueue interface {
 	Pop() (*stream.Stream, error)
 	// Push adds a stream to the end of the queue
 	Push(stream.Stream)
+	// Size returns the total count of items in the queue
+	Size() int
 }
 
 // Queue implements PlaybackQueue.
@@ -32,6 +34,10 @@ func (q *Queue) Pop() (*stream.Stream, error) {
 
 func (q *Queue) Push(s stream.Stream) {
 	q.items = append(q.items, s)
+}
+
+func (q *Queue) Size() int {
+	return len(q.items)
 }
 
 func NewQueue() *Queue {
