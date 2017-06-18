@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	port := flag.String("port", "8080", "default port to listen on")
 	flag.Parse()
 
 	socketHandler := socket.NewHandler(cmd.NewHandler(), client.NewHandler(), playback.NewHandler(), stream.NewHandler())
@@ -20,7 +21,7 @@ func main() {
 
 	// init http server with socket.io support
 	application := server.NewServer(requestHandler, &server.ServerOptions{
-		Port: "8080",
+		Port: *port,
 		Host: "0.0.0.0",
 		Out:  os.Stdout,
 	})
