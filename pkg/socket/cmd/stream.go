@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
+	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -74,6 +75,8 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		})
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, (*nextStream).GetStreamURL()))
 		return fmt.Sprintf("attempting to load the next item in the queue: %q", (*nextStream).GetStreamURL()), nil
+	case "load":
+		fallthrough
 	case "set":
 		// skip adding a stream to the queue, and set as currently playing playback stream
 		url, err := getStreamUrlFromArgs(args)
@@ -154,19 +157,40 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", fmt.Errorf("a time (in seconds) must be provided. See usage info.")
 		}
 
-		newTime, err := strconv.Atoi(args[1])
-		if err != nil {
-			return "", fmt.Errorf("error: unable to convert user-provided argument: %v", err)
+		rawTime := args[1]
+		modifier := string(rawTime[0])
+		if modifier == "+" || modifier == "-" {
+			rawTime = rawTime[1:]
+		} else {
+			modifier = ""
 		}
 
-		sPlayback.SetTime(newTime)
+		newTime, err := strconv.Atoi(rawTime)
+		if err != nil {
+			// if an int was not received, try to parse human-readable time format (0h0m0s)
+			newTime, err = util.HumanTimeToSeconds(rawTime)
+			if err != nil {
+				return "", fmt.Errorf("error: cannot interpret %q as a valid time. Must be of the form 12345 or 0h0m0s", args[1])
+			}
+		}
+
+		if len(modifier) > 0 {
+			if modifier == "+" {
+				sPlayback.SetTime(sPlayback.GetTime() + newTime)
+			} else {
+				sPlayback.SetTime(sPlayback.GetTime() - newTime)
+			}
+		} else {
+			sPlayback.SetTime(newTime)
+		}
+
 		user.BroadcastAll("streamsync", &client.Response{
 			Id:    user.GetId(),
 			From:  username,
 			Extra: sPlayback.GetStatus(),
 		})
 
-		return "setting the stream playback to " + args[1] + "s for all clients.", nil
+		return fmt.Sprintf("setting the stream playback to %vs for all clients.", newTime), nil
 	}
 
 	return h.usage, nil
