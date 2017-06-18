@@ -30,14 +30,14 @@ const (
 )
 
 func (h *Handler) HandleClientConnection(conn sockio.Socket) {
-	log.Printf("SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
+	log.Printf("INFO SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
 
 	h.RegisterClient(conn)
-	log.Printf("SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
+	log.Printf("INFO SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
 
 	// TODO: remove room's StreamPlayback once last client has left
 	conn.On("disconnection", func() {
-		log.Printf("SOCKET DCONN client with id %q has disconnected\n", conn.Id())
+		log.Printf("INFO DCONN SOCKET client with id %q has disconnected\n", conn.Id())
 
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
 			userName, exists := c.GetUsername()
@@ -51,27 +51,27 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 
 		err := h.DeregisterClient(conn)
 		if err != nil {
-			log.Printf("SOCKET ERR %v", err)
+			log.Printf("ERR SOCKET %v", err)
 		}
 	})
 
 	conn.On("request_updateusername", func(data map[string]string) {
 		username, ok := data["user"]
 		if !ok {
-			log.Printf("SOCKET CLIENT ERR client %q sent malformed request to update username. Ignoring request.", conn.Id())
+			log.Printf("ERR SOCKET CLIENT client %q sent malformed request to update username. Ignoring request.", conn.Id())
 			return
 		}
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR %v. Broadcasting as info_clienterror event", err)
+			log.Printf("ERR SOCKET CLIENT %v. Broadcasting as info_clienterror event", err)
 			c.BroadcastErrorTo(err)
 			return
 		}
 
 		err = util.UpdateClientUsername(c, username, h.clientHandler, h.PlaybackHandler)
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR %v. Broadcasting as \"info_clienterror\" event", err)
+			log.Printf("ERR SOCKET CLIENT %v. Broadcasting as \"info_clienterror\" event", err)
 			c.BroadcastErrorTo(err)
 		}
 	})
@@ -79,18 +79,18 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 	conn.On("request_chatmessage", func(data map[string]interface{}) {
 		username, ok := data["user"]
 		if ok {
-			log.Printf("SOCKET CLIENT INFO client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
+			log.Printf("INFO SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
 		}
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR could not retrieve client. Ignoring request_chatmessage request: %v", err)
+			log.Printf("ERR SOCKET CLIENT could not retrieve client. Ignoring request_chatmessage request: %v", err)
 			return
 		}
 
 		err, command, isCommand := h.ParseCommandMessage(c, data)
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR unable to parse client chat message as command: %v", err)
+			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
 			return
 		}
@@ -102,18 +102,21 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 				cmdArgs = cmdSegments[1:]
 			}
 
-			log.Printf("SOCKET CLIENT INFO interpreting chat message as user command %q for client id (%q) with name %q", command, conn.Id(), username)
+			log.Printf("INFO SOCKET CLIENT interpreting chat message as user command %q for client id (%q) with name %q", command, conn.Id(), username)
 			result, err := h.CommandHandler.ExecuteCommand(cmdSegments[0], cmdArgs, c, h.clientHandler, h.PlaybackHandler, h.StreamHandler)
 			if err != nil {
-				log.Printf("SOCKET CLIENT ERR unable to execute command with id %q: %v", command, err)
+				log.Printf("ERR SOCKET CLIENT unable to execute command with id %q: %v", command, err)
 				c.BroadcastSystemMessageTo(err.Error())
 				return
 			}
 
-			c.BroadcastSystemMessageTo(result)
+			if len(result) > 0 {
+				c.BroadcastSystemMessageTo(result)
+			}
 			return
 		}
 
+		// TODO: parse message multimedia
 		// if err := h.ReplaceMessageImageURL(data); err != nil {
 		// 	log.Printf("SOCKET CLIENT WARN ")
 		// }
@@ -121,21 +124,21 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		res := client.ResponseFromClientData(data)
 		c.BroadcastAll("chatmessage", &res)
 
-		fmt.Printf("SOCKET CLIENT INFO chatmessage received %v\n", data)
+		fmt.Printf("INFO SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
 	conn.On("request_streamsync", func(data map[string]interface{}) {
-		log.Printf("SOCKET CLIENT INFO client with id %q requested a streamsync", conn.Id())
+		log.Printf("INFO SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
-			log.Printf("SOCKET CLIENT ERR unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
 			return
 		}
 
 		roomName, exists := c.GetRoom()
 		if !exists {
-			log.Printf("SOCKET CLIENT ERR client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
 			return
 		}
 
@@ -183,15 +186,15 @@ func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]int
 // 1. create a streamPlayback object whose "id" becomes the room's name
 // 2.
 func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
-	log.Printf("SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
+	log.Printf("INFO SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
 
 	roomName, err := util.GetRoomNameFromRequest(sockioconn.Request())
 	if err != nil {
-		log.Printf("SOCKET CLIENT WARN websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
+		log.Printf("WARN SOCKET CLIENT websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
 		roomName = ROOM_DEFAULT_LOBBY
 	}
 
-	log.Printf("SOCKET CLIENT assigning client to room with name %q", roomName)
+	log.Printf("INFO SOCKET CLIENT assigning client to room with name %q", roomName)
 
 	c := h.clientHandler.CreateClient(sockioconn)
 	c.JoinRoom(roomName)
@@ -202,7 +205,7 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 	if !exists {
-		log.Printf("SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
+		log.Printf("INFO SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
 		sPlayback = h.PlaybackHandler.NewStreamPlayback(roomName)
 		sPlayback.OnTick(func(currentTime int) {
 			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
@@ -211,10 +214,10 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 
 			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 			if !exists {
-				log.Printf("CALLBACK-PLAYBACK SOCKET CLIENT ERR attempted to send streamsync event to client, but stream playback does not exist.")
+				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT attempted to send streamsync event to client, but stream playback does not exist.")
 			}
 
-			log.Printf("CALLBACK-PLAYBACK SOCKET CLIENT INFO streamsync event sent after %v seconds", currentTime)
+			log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
 			c.BroadcastAll("streamsync", &client.Response{
 				Id:    sockioconn.Id(),
 				Extra: currPlayback.GetStatus(),
@@ -224,14 +227,14 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 		return
 	}
 
-	log.Printf("SOCKET CLIENT found StreamPlayback for room with name %q", roomName)
+	log.Printf("INFO SOCKET CLIENT found StreamPlayback for room with name %q", roomName)
 
 	pStream, exists := sPlayback.GetStream()
 	if exists {
-		log.Printf("SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), roomName)
+		log.Printf("INFO SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", (*pStream).GetStreamURL(), roomName)
 		c.BroadcastTo("streamload", &client.Response{
 			Id:    c.GetId(),
-			Extra: pStream.GetInfo(),
+			Extra: (*pStream).GetInfo(),
 		})
 	}
 }

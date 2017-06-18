@@ -103,8 +103,8 @@ func (p *StreamPlayback) GetQueue() *PlaybackQueue {
 // GetStream returns a stream.Stream object containing current stream data
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback
-func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
-	return p.stream, p.stream != nil
+func (p *StreamPlayback) GetStream() (*stream.Stream, bool) {
+	return &p.stream, p.stream != nil
 }
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
@@ -132,15 +132,15 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 // Returns a map compatible with json types
 // detailing the current playback status
 func (p *StreamPlayback) GetStatus() map[string]interface{} {
-	streamInfo := "&lt;no stream loaded&gt;"
+	streamUrl := ""
 	s, exists := p.GetStream()
 	if exists {
-		streamInfo = s.GetStreamURL()
+		streamUrl = (*s).GetStreamURL()
 	}
 
 	return map[string]interface{}{
 		"queueSize": p.queue.Size(),
-		"stream":    streamInfo,
+		"stream":    streamUrl,
 		"timer":     p.GetTime(),
 		"isPlaying": p.timer.GetStatus() == TIMER_PLAY,
 		"isStopped": p.timer.GetStatus() == TIMER_STOP,

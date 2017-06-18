@@ -17,8 +17,8 @@ type StreamCmd struct {
 
 const (
 	STREAM_NAME        = "stream"
-	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip)'"
-	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
+	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip|safeskip)'"
+	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|safeskip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
 )
 
 var (
@@ -37,13 +37,13 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 	userRoom, hasRoom := user.GetRoom()
 	if !hasRoom {
-		log.Printf("SOCKET CLIENT ERR client with id %q (%s) attempted to control stream playback with no room assigned", user.GetId(), username)
+		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.GetId(), username)
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
 	sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom)
 	if !sPlaybackExists {
-		log.Printf("SOCKET CLIENT ERR unable to associate client %q (%s) in room %q with any stream playback objects", user.GetId(), username, userRoom)
+		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.GetId(), username, userRoom)
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")
 	}
 
@@ -56,6 +56,27 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		}
 
 		return output, nil
+	case "safeskip":
+		// skip the currently-playing stream and replace it with the next item in the queue but
+		// require the url of the currently playing item in order to succeed. If the given url
+		// does not match the one of the currently-playing stream, then no operation takes place.
+		// If there is no currently playing item (sPlayback.stream == nil), an error is returned.
+		url, err := getStreamUrlFromArgs(args)
+		if err != nil {
+			return "", err
+		}
+
+		s, exists := sPlayback.GetStream()
+		if !exists {
+			return "", fmt.Errorf("failed to safeskip; no stream is currently playing")
+		}
+
+		if (*s).GetStreamURL() != url {
+			log.Printf("WARN SOCKET CLIENT failed to safeskip stream. Current stream url (%s) does not match given safeskip url (%s)", (*s).GetStreamURL(), url)
+			return "", nil
+		}
+
+		fallthrough
 	case "skip":
 		// skip the currently-playing stream and replace it with the next item in the queue
 		queue := sPlayback.GetQueue()

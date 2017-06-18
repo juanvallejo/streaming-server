@@ -29,7 +29,7 @@ func (t *Timer) Play() error {
 
 	if t.status == TIMER_PLAY {
 		log.Printf("STREAM PLAYBACK TIMER attempt to play an already playing timer, ignoring...")
-		return fmt.Errorf("already playing")
+		return nil
 	}
 
 	t.status = TIMER_PLAY
