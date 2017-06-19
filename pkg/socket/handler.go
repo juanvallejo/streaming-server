@@ -55,6 +55,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		}
 	})
 
+	// this event is received when a client is requesting a username update
 	conn.On("request_updateusername", func(data map[string]string) {
 		username, ok := data["user"]
 		if !ok {
@@ -76,6 +77,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		}
 	})
 
+	// this event is received when a client is requesting to broadcast a chat message
 	conn.On("request_chatmessage", func(data map[string]interface{}) {
 		username, ok := data["user"]
 		if ok {
@@ -127,6 +129,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		fmt.Printf("INFO SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
+	// this event is received when a client is requesting current stream state information
 	conn.On("request_streamsync", func(data map[string]interface{}) {
 		log.Printf("INFO SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
 
@@ -144,13 +147,50 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 
 		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 		if !exists {
-
+			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.GetId())
+			c.BroadcastErrorTo(fmt.Errorf("Warning: could not update stream playback. No room could be detected."))
+			return
 		}
 
 		c.BroadcastTo("streamsync", &client.Response{
 			Id:    c.GetId(),
 			Extra: sPlayback.GetStatus(),
 		})
+	})
+
+	// this event is received when a client is requesting to update stream state information in the server
+	conn.On("streamdata", func(data map[string]interface{}) {
+		c, err := h.clientHandler.GetClient(conn.Id())
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			return
+		}
+
+		roomName, exists := c.GetRoom()
+		if !exists {
+			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+			return
+		}
+
+		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+		if !exists {
+			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.GetId())
+			c.BroadcastErrorTo(fmt.Errorf("Warning: could not update stream playback. No room could be detected."))
+			return
+		}
+
+		s, exists := sPlayback.GetStream()
+		if !exists {
+			log.Printf("ERR SOCKET CLIENT client with id (%q) sent updated streamdata but no stream could be found associated with the current playback.", c.GetId())
+			return
+		}
+
+		log.Printf("INFO SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
+		err = (*s).SetInfo(data)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT error updating stream data: %v", err)
+			return
+		}
 	})
 }
 

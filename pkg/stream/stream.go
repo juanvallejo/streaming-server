@@ -1,5 +1,7 @@
 package stream
 
+import "encoding/json"
+
 const (
 	STREAM_TYPE_YOUTUBE = "youtube"
 	STREAM_TYPE_LOCAL   = "movie"
@@ -16,9 +18,13 @@ type Stream interface {
 	GetName() string
 	// GetKind returns the type of stream
 	GetKind() string
+	// GetDuration returns the stream's saved duration
+	GetDuration() int
 	// GetInfo returns a map -> interface{} of json friendly data
 	// describing the current stream object
 	GetInfo() map[string]interface{}
+	// SetInfo receives a map of string->interface{} and unmarshals it into
+	SetInfo(map[string]interface{}) error
 }
 
 // StreamSchema implements Stream
@@ -29,21 +35,37 @@ type StreamSchema struct {
 	name string
 	// url is a fully qualified resource locator
 	url string
+	// duration is the total time for the current stream
+	Duration int `json:"duration"`
 }
 
-func (s StreamSchema) GetStreamURL() string {
+func (s *StreamSchema) GetStreamURL() string {
 	return s.url
 }
 
-func (s StreamSchema) GetName() string {
+func (s *StreamSchema) GetName() string {
 	return s.name
 }
 
-func (s StreamSchema) GetKind() string {
+func (s *StreamSchema) GetKind() string {
 	return s.kind
 }
 
-func (s StreamSchema) GetInfo() map[string]interface{} {
+func (s *StreamSchema) GetDuration() int {
+	return s.Duration
+}
+
+func (s *StreamSchema) SetInfo(data map[string]interface{}) error {
+	jsonStr, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(jsonStr, s)
+	return err
+}
+
+func (s *StreamSchema) GetInfo() map[string]interface{} {
 	return map[string]interface{}{
 		"kind": s.kind,
 		"name": s.name,
@@ -55,26 +77,26 @@ func (s StreamSchema) GetInfo() map[string]interface{} {
 // and represents a youtube video stream
 // data and state
 type YouTubeStream struct {
-	StreamSchema
+	*StreamSchema
 }
 
 // LocalVideoStream implements Stream
 // and represents a video stream from
 // a local filepath.
 type LocalVideoStream struct {
-	StreamSchema
+	*StreamSchema
 }
 
 // TwitchStream implements Stream
 // and represents a twitch.tv video stream
 // data and state
 type TwitchStream struct {
-	StreamSchema
+	*StreamSchema
 }
 
 func NewYouTubeStream(url string) Stream {
 	return YouTubeStream{
-		StreamSchema{
+		&StreamSchema{
 			url:  url,
 			kind: STREAM_TYPE_YOUTUBE,
 		},
@@ -83,7 +105,7 @@ func NewYouTubeStream(url string) Stream {
 
 func NewTwitchStream(url string) Stream {
 	return TwitchStream{
-		StreamSchema{
+		&StreamSchema{
 			url:  url,
 			kind: STREAM_TYPE_TWITCH,
 		},
@@ -92,7 +114,7 @@ func NewTwitchStream(url string) Stream {
 
 func NewLocalVideoStream(filepath string) Stream {
 	return LocalVideoStream{
-		StreamSchema{
+		&StreamSchema{
 			url:  filepath,
 			kind: STREAM_TYPE_LOCAL,
 		},
