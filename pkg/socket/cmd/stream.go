@@ -17,8 +17,8 @@ type StreamCmd struct {
 
 const (
 	STREAM_NAME        = "stream"
-	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip|safeskip)'"
-	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|safeskip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
+	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip)'"
+	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
 )
 
 var (

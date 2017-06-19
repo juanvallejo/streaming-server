@@ -257,9 +257,33 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT attempted to send streamsync event to client, but stream playback does not exist.")
 			}
 
+			currStream, exists := currPlayback.GetStream()
+			if exists {
+				// if stream exists and playback timer >= playback stream duration, stop stream
+				// or queue the next item in the playback queue (if queue not empty)
+				if (*currStream).GetDuration() > 0 && float64(currPlayback.GetTime()) >= (*currStream).GetDuration() {
+					queue := currPlayback.GetQueue()
+					nextStream, err := (*queue).Pop()
+					if err == nil {
+						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
+
+						currPlayback.SetStream(nextStream)
+						currPlayback.Reset()
+						c.BroadcastAll("streamload", &client.Response{
+							Id:    c.GetId(),
+							From:  "system",
+							Extra: (*nextStream).GetInfo(),
+						})
+					} else {
+						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
+						currPlayback.Stop()
+					}
+				}
+			}
+
 			log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
 			c.BroadcastAll("streamsync", &client.Response{
-				Id:    sockioconn.Id(),
+				Id:    c.GetId(),
 				Extra: currPlayback.GetStatus(),
 			})
 		})

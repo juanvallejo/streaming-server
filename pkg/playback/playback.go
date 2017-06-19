@@ -134,19 +134,22 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 // detailing the current playback status
 func (p *StreamPlayback) GetStatus() map[string]interface{} {
 	streamUrl := ""
+	streamDuration := 0.0
 	s, exists := p.GetStream()
 	if exists {
 		streamUrl = (*s).GetStreamURL()
+		streamDuration = (*s).GetDuration()
 	}
 
 	return map[string]interface{}{
-		"queueSize": p.queue.Size(),
-		"stream":    streamUrl,
-		"timer":     p.GetTime(),
-		"isPlaying": p.timer.GetStatus() == TIMER_PLAY,
-		"isStopped": p.timer.GetStatus() == TIMER_STOP,
-		"isPaused":  p.timer.GetStatus() == TIMER_PAUSE,
-		"startedBy": p.startedBy,
+		"queueSize":      p.queue.Size(),
+		"streamUrl":      streamUrl,
+		"streamDuration": streamDuration,
+		"timer":          p.GetTime(),
+		"isPlaying":      p.timer.GetStatus() == TIMER_PLAY,
+		"isStopped":      p.timer.GetStatus() == TIMER_STOP,
+		"isPaused":       p.timer.GetStatus() == TIMER_PAUSE,
+		"startedBy":      p.startedBy,
 	}
 }
 

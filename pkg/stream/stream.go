@@ -19,7 +19,7 @@ type Stream interface {
 	// GetKind returns the type of stream
 	GetKind() string
 	// GetDuration returns the stream's saved duration
-	GetDuration() int
+	GetDuration() float64
 	// GetInfo returns a map -> interface{} of json friendly data
 	// describing the current stream object
 	GetInfo() map[string]interface{}
@@ -36,7 +36,7 @@ type StreamSchema struct {
 	// url is a fully qualified resource locator
 	url string
 	// duration is the total time for the current stream
-	Duration int `json:"duration"`
+	Duration float64 `json:"duration"`
 }
 
 func (s *StreamSchema) GetStreamURL() string {
@@ -51,7 +51,7 @@ func (s *StreamSchema) GetKind() string {
 	return s.kind
 }
 
-func (s *StreamSchema) GetDuration() int {
+func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
 }
 

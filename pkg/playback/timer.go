@@ -7,6 +7,8 @@ import (
 )
 
 const (
+	MAX_TIMER_CHAN_BUFFER = 1
+
 	TIMER_PLAY = iota
 	TIMER_PAUSE
 	TIMER_STOP
@@ -119,6 +121,6 @@ func Increment(timer *Timer, c chan int) {
 func NewTimer() *Timer {
 	return &Timer{
 		status:   TIMER_STOP,
-		timeChan: make(chan int),
+		timeChan: make(chan int, MAX_TIMER_CHAN_BUFFER),
 	}
 }
