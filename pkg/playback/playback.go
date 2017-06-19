@@ -13,7 +13,7 @@ import (
 type StreamPlayback struct {
 	id        string
 	queue     PlaybackQueue
-	stream    stream.Stream
+	stream    *stream.Stream
 	startedBy string
 	timer     *Timer
 }
@@ -85,14 +85,15 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 	p.timer.OnTick(callback)
 }
 
-// QueueStreamUrl receives a stream url and pushes a loaded stream.Stream to the end of the playback queue
-func (p *StreamPlayback) QueueStreamFromUrl(url string, streamHandler stream.StreamHandler) error {
+// QueueStreamUrl receives a stream url and pushes a loaded stream.Stream
+// to the end of the playback queue for a given userId.
+func (p *StreamPlayback) QueueStreamFromUrl(url string, userId string, streamHandler stream.StreamHandler) error {
 	s, err := p.GetOrCreateStreamFromUrl(url, streamHandler)
 	if err != nil {
 		return err
 	}
 
-	p.queue.Push(s)
+	p.queue.Push(userId, s)
 	return nil
 }
 
@@ -104,20 +105,20 @@ func (p *StreamPlayback) GetQueue() *PlaybackQueue {
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback
 func (p *StreamPlayback) GetStream() (*stream.Stream, bool) {
-	return &p.stream, p.stream != nil
+	return p.stream, p.stream != nil
 }
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
-func (p *StreamPlayback) SetStream(s stream.Stream) {
+func (p *StreamPlayback) SetStream(s *stream.Stream) {
 	p.stream = s
 }
 
 // GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)
 // and retrieves a corresponding stream.Stream, or creates a new one.
-func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
+func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (*stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INFO PLAYBACK found existing stream object with url %q, retrieving...", url)
-		return s, nil
+		return &s, nil
 	}
 
 	s, err := streamHandler.NewStream(url)
@@ -126,7 +127,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	}
 
 	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
-	return s, nil
+	return &s, nil
 }
 
 // Returns a map compatible with json types
