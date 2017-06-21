@@ -9,10 +9,6 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/server/path"
 )
 
-const (
-	LOCAL_FILE_ROOT = ""
-)
-
 type StreamHandler interface {
 	// GetStream returns a registered stream by the given url
 	// a url is used as a stream's unique identifier.
@@ -90,7 +86,7 @@ func (h *Handler) NewStream(url string) (Stream, error) {
 	return s, nil
 }
 
-func NewHandler() *Handler {
+func NewHandler() StreamHandler {
 	return &Handler{
 		streams: make(map[string]Stream),
 	}

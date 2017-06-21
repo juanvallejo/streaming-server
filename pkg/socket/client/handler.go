@@ -67,7 +67,7 @@ func (h *Handler) GetClientSize() int {
 	return len(h.clientsById)
 }
 
-func NewHandler() *Handler {
+func NewHandler() SocketClientHandler {
 	return &Handler{
 		clientsById: make(map[string]*Client),
 	}

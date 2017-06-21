@@ -31,7 +31,7 @@ func (h *Handler) GetStreamPlayback(roomName string) (*StreamPlayback, bool) {
 	return nil, false
 }
 
-func NewHandler() *Handler {
+func NewHandler() StreamPlaybackHandler {
 	return &Handler{
 		streamplaybacks: make(map[string]*StreamPlayback),
 	}

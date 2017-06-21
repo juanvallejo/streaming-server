@@ -59,7 +59,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 	case "skip":
 		// skip the currently-playing stream and replace it with the next item in the queue
 		queue := sPlayback.GetQueue()
-		nextStream, err := (*queue).Pop()
+		nextStream, err := queue.Pop()
 		if err != nil {
 			return "", fmt.Errorf("error: %v", err)
 		}
@@ -71,10 +71,10 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		user.BroadcastAll("streamload", &client.Response{
 			Id:    user.GetId(),
 			From:  username,
-			Extra: (*nextStream).GetInfo(),
+			Extra: nextStream.GetInfo(),
 		})
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, (*nextStream).GetStreamURL()))
-		return fmt.Sprintf("attempting to load the next item in the queue: %q", (*nextStream).GetStreamURL()), nil
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, nextStream.GetStreamURL()))
+		return fmt.Sprintf("attempting to load the next item in the queue: %q", nextStream.GetStreamURL()), nil
 	case "load":
 		fallthrough
 	case "set":
@@ -96,9 +96,9 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		user.BroadcastAll("streamload", &client.Response{
 			Id:    user.GetId(),
 			From:  username,
-			Extra: (*s).GetInfo(),
+			Extra: s.GetInfo(),
 		})
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, (*s).GetKind(), url))
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, s.GetKind(), url))
 
 		return fmt.Sprintf("attempting to load %q", args[1]), nil
 	case "queue":

@@ -13,7 +13,7 @@ import (
 type StreamPlayback struct {
 	id        string
 	queue     PlaybackQueue
-	stream    *stream.Stream
+	stream    stream.Stream
 	startedBy string
 	timer     *Timer
 }
@@ -97,28 +97,28 @@ func (p *StreamPlayback) QueueStreamFromUrl(url string, userId string, streamHan
 	return nil
 }
 
-func (p *StreamPlayback) GetQueue() *PlaybackQueue {
-	return &p.queue
+func (p *StreamPlayback) GetQueue() PlaybackQueue {
+	return p.queue
 }
 
 // GetStream returns a stream.Stream object containing current stream data
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback
-func (p *StreamPlayback) GetStream() (*stream.Stream, bool) {
+func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 	return p.stream, p.stream != nil
 }
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
-func (p *StreamPlayback) SetStream(s *stream.Stream) {
+func (p *StreamPlayback) SetStream(s stream.Stream) {
 	p.stream = s
 }
 
 // GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)
 // and retrieves a corresponding stream.Stream, or creates a new one.
-func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (*stream.Stream, error) {
+func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INFO PLAYBACK found existing stream object with url %q, retrieving...", url)
-		return &s, nil
+		return s, nil
 	}
 
 	s, err := streamHandler.NewStream(url)
@@ -126,8 +126,11 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 		return nil, err
 	}
 
+	// if created new stream, fetch its duration info
+	// AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M
+
 	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
-	return &s, nil
+	return s, nil
 }
 
 // Returns a map compatible with json types
@@ -137,8 +140,8 @@ func (p *StreamPlayback) GetStatus() map[string]interface{} {
 	streamDuration := 0.0
 	s, exists := p.GetStream()
 	if exists {
-		streamUrl = (*s).GetStreamURL()
-		streamDuration = (*s).GetDuration()
+		streamUrl = s.GetStreamURL()
+		streamDuration = s.GetDuration()
 	}
 
 	return map[string]interface{}{

@@ -1,12 +1,20 @@
 package stream
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
 
 const (
 	STREAM_TYPE_YOUTUBE = "youtube"
 	STREAM_TYPE_LOCAL   = "movie"
 	STREAM_TYPE_TWITCH  = "twitch"
+
+	YT_API_KEY = "AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M"
 )
+
+type StreamFetchInfoCallback func(*http.Response, error)
 
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
@@ -23,6 +31,9 @@ type Stream interface {
 	// GetInfo returns a map -> interface{} of json friendly data
 	// describing the current stream object
 	GetInfo() map[string]interface{}
+	// FetchInfo calls the necessary apis / libraries needed to load
+	// extra stream information
+	FetchInfo(StreamFetchInfoCallback)
 	// SetInfo receives a map of string->interface{} and unmarshals it into
 	SetInfo(map[string]interface{}) error
 }
@@ -55,6 +66,10 @@ func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
 }
 
+func (s *StreamSchema) FetchInfo(callback StreamFetchInfoCallback) {
+	callback(nil, fmt.Errorf("unimplemented procedure"))
+}
+
 func (s *StreamSchema) SetInfo(data map[string]interface{}) error {
 	jsonStr, err := json.Marshal(data)
 	if err != nil {
@@ -77,7 +92,18 @@ func (s *StreamSchema) GetInfo() map[string]interface{} {
 // and represents a youtube video stream
 // data and state
 type YouTubeStream struct {
+	apiKey string
 	*StreamSchema
+}
+
+func (s *YouTubeStream) FetchInfo(callback StreamFetchInfoCallback) {
+	//res, err := http.Get("https://www.googleapis.com/youtube/v3/videos?id=" + ytVideoIdFromUrl(s.url) + "&key=" + s.apiKey + "&part=contentDetails")
+	//if err != nil {
+	//	callback(nil, err)
+	//	return
+	//}
+
+	return
 }
 
 // LocalVideoStream implements Stream
@@ -95,16 +121,18 @@ type TwitchStream struct {
 }
 
 func NewYouTubeStream(url string) Stream {
-	return YouTubeStream{
-		&StreamSchema{
+	return &YouTubeStream{
+		StreamSchema: &StreamSchema{
 			url:  url,
 			kind: STREAM_TYPE_YOUTUBE,
 		},
+
+		apiKey: YT_API_KEY,
 	}
 }
 
 func NewTwitchStream(url string) Stream {
-	return TwitchStream{
+	return &TwitchStream{
 		&StreamSchema{
 			url:  url,
 			kind: STREAM_TYPE_TWITCH,
@@ -113,10 +141,14 @@ func NewTwitchStream(url string) Stream {
 }
 
 func NewLocalVideoStream(filepath string) Stream {
-	return LocalVideoStream{
+	return &LocalVideoStream{
 		&StreamSchema{
 			url:  filepath,
 			kind: STREAM_TYPE_LOCAL,
 		},
 	}
+}
+
+func ytVideoIdFromUrl(url string) string {
+	return ""
 }

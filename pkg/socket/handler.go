@@ -186,7 +186,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		}
 
 		log.Printf("INFO SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
-		err = (*s).SetInfo(data)
+		err = s.SetInfo(data)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT error updating stream data: %v", err)
 			return
@@ -255,15 +255,16 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 			if !exists {
 				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT attempted to send streamsync event to client, but stream playback does not exist.")
+				return
 			}
 
 			currStream, exists := currPlayback.GetStream()
 			if exists {
 				// if stream exists and playback timer >= playback stream duration, stop stream
 				// or queue the next item in the playback queue (if queue not empty)
-				if (*currStream).GetDuration() > 0 && float64(currPlayback.GetTime()) >= (*currStream).GetDuration() {
+				if currStream.GetDuration() > 0 && float64(currPlayback.GetTime()) >= currStream.GetDuration() {
 					queue := currPlayback.GetQueue()
-					nextStream, err := (*queue).Pop()
+					nextStream, err := queue.Pop()
 					if err == nil {
 						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
 
@@ -272,7 +273,7 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 						c.BroadcastAll("streamload", &client.Response{
 							Id:    c.GetId(),
 							From:  "system",
-							Extra: (*nextStream).GetInfo(),
+							Extra: nextStream.GetInfo(),
 						})
 					} else {
 						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
@@ -295,10 +296,10 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 
 	pStream, exists := sPlayback.GetStream()
 	if exists {
-		log.Printf("INFO SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", (*pStream).GetStreamURL(), roomName)
+		log.Printf("INFO SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), roomName)
 		c.BroadcastTo("streamload", &client.Response{
 			Id:    c.GetId(),
-			Extra: (*pStream).GetInfo(),
+			Extra: pStream.GetInfo(),
 		})
 	}
 }

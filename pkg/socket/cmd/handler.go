@@ -82,7 +82,7 @@ func (h *Handler) ExecuteCommand(cmdRoot string, args []string, client *client.C
 // NewHandler creates a new SocketCommand handler
 // that registers a list of pre-defined commands
 // invoked through an assigned command id string
-func NewHandler() *Handler {
+func NewHandler() SocketCommandHandler {
 	h := &Handler{
 		commands: make(map[string]SocketCommand),
 		aliases:  make(map[string]SocketCommand),

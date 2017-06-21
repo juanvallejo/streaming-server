@@ -14,30 +14,30 @@ type PlaybackQueue interface {
 	// empty, the QueueItem is removed from the Queue. When a QueueItem is removed
 	// from the Queue, the round-robin count is then adjusted by -1, due to all
 	// indices greater than the deleted QueueItem being decreased by 1.
-	Pop() (*stream.Stream, error)
+	Pop() (stream.Stream, error)
 	// Push receives a QueueItem id and a stream and appends the stream
 	// to the stack of the QueueItem. If a QueueItem is not found,
 	// a new one is created with the given id.
-	Push(string, *stream.Stream)
-	// Size returns the total count of items in the queue
+	Push(string, stream.Stream)
+	// Size returns the total count of streams in all QueueItems in the Queue
 	Size() int
 }
 
 // A queue item maps a unique id to a stack of stream.Streams
 type QueueItem struct {
 	id      string
-	streams []*stream.Stream
+	streams []stream.Stream
 }
 
 // PushStream receives a pointer to a stream.Stream and appends it to
 // an internal stack of stream.Streams.
-func (qi *QueueItem) PushStream(s *stream.Stream) {
+func (qi *QueueItem) PushStream(s stream.Stream) {
 	qi.streams = append(qi.streams, s)
 }
 
 // PopStream returns the first item in the stack of stream.Streams, or
 // an error if the stack is empty.
-func (qi *QueueItem) PopStream() (*stream.Stream, error) {
+func (qi *QueueItem) PopStream() (stream.Stream, error) {
 	if len(qi.streams) == 0 {
 		return nil, fmt.Errorf("no streams found for queue-item with id %q (%v)", qi.id, len(qi.streams))
 	}
@@ -50,7 +50,7 @@ func (qi *QueueItem) PopStream() (*stream.Stream, error) {
 func NewQueueItem(id string) *QueueItem {
 	return &QueueItem{
 		id:      id,
-		streams: []*stream.Stream{},
+		streams: []stream.Stream{},
 	}
 }
 
@@ -63,7 +63,7 @@ type Queue struct {
 	rrCount int
 }
 
-func (q *Queue) Pop() (*stream.Stream, error) {
+func (q *Queue) Pop() (stream.Stream, error) {
 	if len(q.items) == 0 {
 		return nil, fmt.Errorf("there are no items in the queue.")
 	}
@@ -88,7 +88,7 @@ func (q *Queue) Pop() (*stream.Stream, error) {
 	return s, nil
 }
 
-func (q *Queue) Push(id string, s *stream.Stream) {
+func (q *Queue) Push(id string, s stream.Stream) {
 	qi, exists := q.itemsById[id]
 	if !exists {
 		qi = NewQueueItem(id)
@@ -100,10 +100,14 @@ func (q *Queue) Push(id string, s *stream.Stream) {
 }
 
 func (q *Queue) Size() int {
-	return len(q.items)
+	size := 0
+	for _, i := range q.items {
+		size += len(i.streams)
+	}
+	return size
 }
 
-func NewQueue() *Queue {
+func NewQueue() PlaybackQueue {
 	return &Queue{
 		items:     []*QueueItem{},
 		itemsById: make(map[string]*QueueItem),
