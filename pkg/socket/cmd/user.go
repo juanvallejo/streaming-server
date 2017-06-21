@@ -42,12 +42,21 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 	}
 
-	// TODO: only list users in room; not global
+	roomName, exists := user.GetRoom()
+	if !exists {
+		return "", fmt.Errorf("no room associated with user")
+	}
+
 	if args[0] == "list" {
 		userName, userHasName := user.GetUsername()
 
-		output := "All users in the stream:<br />"
+		output := "All users in the current room:<br />"
 		for _, c := range clientHandler.GetClients() {
+			cRoomName, cRoomExists := c.GetRoom()
+			if !cRoomExists || cRoomName != roomName {
+				continue
+			}
+
 			prefix := "<br />    "
 			name, hasName := c.GetUsername()
 			if !hasName {
