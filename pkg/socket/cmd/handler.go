@@ -55,25 +55,16 @@ func (h *Handler) GetCommands() map[string]SocketCommand {
 	return h.commands
 }
 
-// ExecuteCommand receives a command id string
-// and executes the matching StreamCommand.
-// If no StreamCommand is found by the given id,
-// an error is returned; else, a command return
-// string is returned.
 func (h *Handler) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
-	var cmd SocketCommand
+	var command SocketCommand
 
-	commandAlias, aliasExists := h.aliases[cmdRoot]
-	if aliasExists {
-		cmd = commandAlias
-	}
 	command, exists := h.commands[cmdRoot]
-	if exists {
-		cmd = command
+	if !exists {
+		command, exists = h.aliases[cmdRoot]
 	}
 
-	if exists || aliasExists {
-		return cmd.Execute(h, args, client, clientHandler, playbackHandler, streamHandler)
+	if exists {
+		return command.Execute(h, args, client, clientHandler, playbackHandler, streamHandler)
 	}
 
 	return "", fmt.Errorf("error: that command does not exist")
@@ -95,10 +86,11 @@ func NewHandler() SocketCommandHandler {
 // instantiate and append known socket commands
 // to a SocketCommand handler
 func addSocketCommands(handler *Handler) {
-	handler.AddCommand(NewCmdHelp())
-	handler.AddCommand(NewCmdWhoami())
 	handler.AddCommand(NewCmdClear())
-	handler.AddCommand(NewCmdUser())
+	handler.AddCommand(NewCmdDebug())
+	handler.AddCommand(NewCmdHelp())
 	handler.AddCommand(NewCmdStream())
 	handler.AddCommand(NewCmdSubtitles())
+	handler.AddCommand(NewCmdUser())
+	handler.AddCommand(NewCmdWhoami())
 }
