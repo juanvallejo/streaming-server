@@ -28,7 +28,7 @@ type Handler struct {
 
 const (
 	ROOM_DEFAULT_LOBBY           = "lobby"
-	ROOM_DEFAULT_STREAMSYNC_RATE = 30 // send streamsync to clients every 30 seconds
+	ROOM_DEFAULT_STREAMSYNC_RATE = 25 // seconds to wait before emitting streamsync to clients
 )
 
 func (h *Handler) HandleClientConnection(conn sockio.Socket) {
@@ -93,7 +93,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 			return
 		}
 
-		err, command, isCommand := h.ParseCommandMessage(c, data)
+		command, isCommand, err := h.ParseCommandMessage(c, data)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
@@ -210,29 +210,31 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 //
 // A valid client command will always begin with a "/" and never contain more than
 // one "/" character.
-func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]interface{}) (error, string, bool) {
+func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]interface{}) (string, bool, error) {
 	message, ok := data["message"]
 	if !ok {
-		return fmt.Errorf("error: invalid client command format; message field empty"), "", false
+		return "", false, fmt.Errorf("error: invalid client command format; message field empty")
 	}
 
 	command, ok := message.(string)
 	if !ok {
-		return fmt.Errorf("error: client command parse error; unable to cast message to string"), "", false
+		return "", false, fmt.Errorf("error: client command parse error; unable to cast message to string")
 	}
 
 	if string(command[0]) != "/" {
-		return nil, "", false
+		return "", false, nil
 	}
 
-	return nil, command[1:], true
+	return command[1:], true, nil
 }
 
 // RegisterClient receives a socket connection, creates a new client, and assigns the client to a room.
-// if client is first to join room, then the room did not exist before; if this is the case, the following steps
-// are then taken to "create" a room:
-// 1. create a streamPlayback object whose "id" becomes the room's name
-// 2.
+// if client is first to join room, then the room did not exist before; if this is the case, a new
+// streamPlayback object is created to represent the "room" in memory. The streamPlayback's id becomes
+// the client's room name.
+// If a streamPlayback already exists for the current "room" and the streamPlayback has a reference to a
+// stream.Stream, a "streamload" event is sent to the client with the current stream.Stream information.
+// This method is not concurrency-safe.
 func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 	log.Printf("INFO SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
 
