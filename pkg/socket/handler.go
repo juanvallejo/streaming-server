@@ -8,6 +8,8 @@ import (
 
 	sockio "github.com/googollee/go-socket.io"
 
+	"encoding/json"
+
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
@@ -74,6 +76,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT %v. Broadcasting as \"info_clienterror\" event", err)
 			c.BroadcastErrorTo(err)
+			return
 		}
 	})
 
@@ -185,8 +188,13 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 			return
 		}
 
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to convert received data map into json string: %v", err)
+		}
+
 		log.Printf("INFO SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
-		err = s.SetInfo(data)
+		err = s.SetInfo(jsonData)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT error updating stream data: %v", err)
 			return

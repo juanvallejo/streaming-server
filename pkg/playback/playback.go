@@ -127,7 +127,18 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	}
 
 	// if created new stream, fetch its duration info
-	// AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M
+	s.FetchInfo(func(s stream.Stream, data []byte, err error) {
+		if err != nil {
+			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK error: %v", err)
+			return
+		}
+
+		err = s.SetInfo(data)
+		if err != nil {
+			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK unable to set parsed stream info: %v", err)
+			return
+		}
+	})
 
 	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
 	return s, nil
