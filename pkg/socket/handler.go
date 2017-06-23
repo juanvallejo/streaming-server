@@ -1,14 +1,13 @@
 package socket
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 
 	sockio "github.com/googollee/go-socket.io"
-
-	"encoding/json"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"

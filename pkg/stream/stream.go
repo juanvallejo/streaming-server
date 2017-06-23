@@ -133,7 +133,7 @@ func (yt *YouTubeVideoItem) ParseDuration() error {
 func (s *YouTubeStream) FetchInfo(callback StreamFetchInfoCallback) {
 	videoId, err := ytVideoIdFromUrl(s.url)
 	if err != nil {
-		callback(s, []byte{}, fmt.Errorf(""))
+		callback(s, []byte{}, err)
 		return
 	}
 

@@ -16,10 +16,10 @@ var maxChunkSize int = 4096
 // RoomPathHandler implements Path
 // and handles all room url requests
 type StreamPathHandler struct {
-	PathHandler
+	*PathHandler
 }
 
-func (h StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Request) error {
+func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Request) error {
 	fpath := StreamDataFilePathFromUrl(r.URL.String())
 
 	// determine if requested file exists
@@ -102,9 +102,9 @@ func (h StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Req
 	return nil
 }
 
-func NewPathStream() StreamPathHandler {
-	return StreamPathHandler{
-		PathHandler{
+func NewPathStream() Path {
+	return &StreamPathHandler{
+		&PathHandler{
 			pathUrl: StreamRootUrl,
 		},
 	}
