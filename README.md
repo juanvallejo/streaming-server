@@ -15,8 +15,12 @@ Requires `go` to compile.
 
 1. Either `git clone` or `go get` this repo.
   - `cd $GOPATH && go get github.com/juanvallejo/streaming-server`
-2. `cd $GOPATH/<location-of-repo>`
-3. `make`
+  - **or** (using `git clone`):
+    - `mkdir -p $GOPATH/src/github.com/juanvallejo`
+    - `cd $GOPATH/src/github.com/juanvallejo`
+	- `git clone https://github.com/juanvallejo/streaming-server`
+    - `git submodule update --init` (init the webclient submodule)
+2. `make`
 
 ### Running
 
