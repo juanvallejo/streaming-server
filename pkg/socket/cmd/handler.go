@@ -92,5 +92,6 @@ func addSocketCommands(handler *Handler) {
 	handler.AddCommand(NewCmdStream())
 	handler.AddCommand(NewCmdSubtitles())
 	handler.AddCommand(NewCmdUser())
+	handler.AddCommand(NewCmdVolume())
 	handler.AddCommand(NewCmdWhoami())
 }
