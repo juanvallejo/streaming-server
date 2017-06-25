@@ -98,23 +98,25 @@ func Increment(timer *Timer, c chan int) {
 		panic("attempt to increment a nil timer")
 	}
 
-	time.Sleep(time.Duration(1 * time.Second))
-	timer.time++
+	for {
+		time.Sleep(time.Duration(1 * time.Second))
+		timer.time++
 
-	if timer.callback != nil {
-		timer.callback(timer.time)
-	}
-
-	select {
-	case sig := <-c:
-		if sig == TIMER_PAUSE || sig == TIMER_STOP {
-			log.Printf("STREAM PLAYBACK TIMER kill signal received: %v", sig)
-			return
+		if timer.callback != nil {
+			timer.callback(timer.time)
 		}
 
-		log.Printf("STREAM PLAYBACK TIMER invalid timer signal code: %v is not a recognized channel operation", sig)
-	default:
-		Increment(timer, c)
+		select {
+		case sig := <-c:
+			if sig == TIMER_PAUSE || sig == TIMER_STOP {
+				log.Printf("STREAM PLAYBACK TIMER kill signal received: %v", sig)
+				return
+			}
+
+			log.Printf("STREAM PLAYBACK TIMER invalid timer signal code: %v is not a recognized channel operation", sig)
+		default:
+			continue
+		}
 	}
 }
 
