@@ -3,10 +3,9 @@ package client
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
-	sockio "github.com/googollee/go-socket.io"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
 const (
@@ -19,7 +18,7 @@ var RESERVED_USERNAMES = map[string]bool{
 }
 
 type Client struct {
-	connection sockio.Socket
+	connection connection.Connection
 	usernames  []string // stores MAX_USERNAME_HIST usernames; tail represents current username
 	room       string
 }
@@ -36,7 +35,7 @@ type Response struct {
 // New receives a socket.io client connection and creates
 // a new socket client, containing information about a
 // unique socket client connection.
-func NewClient(conn sockio.Socket) *Client {
+func NewClient(conn connection.Connection) *Client {
 	return &Client{
 		connection: conn,
 		usernames:  make([]string, 0, MAX_USERNAME_HIST),
@@ -97,17 +96,29 @@ func (c *Client) BroadcastErrorTo(err error) {
 }
 
 func (c *Client) BroadcastAll(evt string, data *Response) {
-	c.BroadcastFrom(evt, data)
-	c.BroadcastTo(evt, data)
+	room, inRoom := c.GetRoom()
+	if !inRoom {
+		panic("broadcast attempt from client without room")
+	}
+
+	m := getBroadcastMessage(c, evt, data)
+	c.connection.Broadcast(room, evt, m)
 }
 
 func (c *Client) BroadcastTo(evt string, data *Response) {
-	m, err := json.Marshal(data)
+	message := &connection.Message{
+		Event: evt,
+		Data: map[string]interface{}{
+			"response": data,
+		},
+	}
+
+	m, err := json.Marshal(message)
 	if err != nil {
 		panic(err)
 	}
 
-	c.connection.Emit(evt, m)
+	c.connection.Send(m)
 }
 
 func (c *Client) BroadcastFrom(evt string, data *Response) {
@@ -116,14 +127,8 @@ func (c *Client) BroadcastFrom(evt string, data *Response) {
 		panic("broadcast attempt from client without room")
 	}
 
-	m, err := json.Marshal(data)
-	if err != nil {
-		panic(err)
-	}
-
-	c.connection.BroadcastTo(room, evt, m, func(sconn sockio.Socket, data string) {
-		log.Printf("SOCKET CLIENT BROADCAST ACK %v", data)
-	})
+	m := getBroadcastMessage(c, evt, data)
+	c.connection.BroadcastFrom(room, evt, m)
 }
 
 // BroadcastSystemMessageFrom emits a system-level message from the current
@@ -240,6 +245,22 @@ func (c *Client) GetRoom() (string, bool) {
 }
 
 // GetConnection returns the socket connection for the current client
-func (c *Client) GetConnection() sockio.Socket {
+func (c *Client) GetConnection() connection.Connection {
 	return c.connection
+}
+
+func getBroadcastMessage(c *Client, evt string, data *Response) []byte {
+	message := &connection.Message{
+		Event: evt,
+		Data: map[string]interface{}{
+			"response": data,
+		},
+	}
+
+	m, err := json.Marshal(message)
+	if err != nil {
+		panic(err)
+	}
+
+	return m
 }

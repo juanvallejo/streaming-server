@@ -9,7 +9,7 @@ import (
 var (
 	ApiRootUrl    = "/api"
 	FileRootUrl   = "/src/static"
-	SocketRootUrl = "/socket.io"
+	SocketRootUrl = "/ws"
 	RoomRootUrl   = "/room"
 	StreamRootUrl = "/stream"
 

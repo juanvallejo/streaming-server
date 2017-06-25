@@ -76,7 +76,7 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 // GetRoomNameFromRequest receives a socket connection request and returns
 // a fully-qualified room name from the request's referer information
 func GetRoomNameFromRequest(req *http.Request) (string, error) {
-	segs := strings.Split(req.Referer(), ROOM_URL_SEGMENT)
+	segs := strings.Split(req.URL.String(), ROOM_URL_SEGMENT)
 	if len(segs) > 1 {
 		return segs[1], nil
 	}

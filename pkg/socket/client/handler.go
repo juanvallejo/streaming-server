@@ -3,17 +3,17 @@ package client
 import (
 	"fmt"
 
-	sockio "github.com/googollee/go-socket.io"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
 type SocketClientHandler interface {
 	// CreateClient receives a socket connection, creates a Client,
 	// and adds it to an internal map. The new created Client is returned.
-	CreateClient(sockio.Socket) *Client
+	CreateClient(connection.Connection) *Client
 	// DestroyClient receives a socket connection, finds a Client by its id,
 	// removes it from its room (if joined), and deletes the Client from an
 	// internal map. If no client exists by that id, an error is returned.
-	DestroyClient(sockio.Socket) error
+	DestroyClient(connection.Connection) error
 	// GetClient receives a client's string id, and returns a Client instance
 	// associated with that id, or an error if no client by that id is found.
 	GetClient(string) (*Client, error)
@@ -28,14 +28,14 @@ type Handler struct {
 	clientsById map[string]*Client
 }
 
-func (h *Handler) CreateClient(socket sockio.Socket) *Client {
+func (h *Handler) CreateClient(socket connection.Connection) *Client {
 	c := NewClient(socket)
 	h.clientsById[socket.Id()] = c
 
 	return c
 }
 
-func (h *Handler) DestroyClient(socket sockio.Socket) error {
+func (h *Handler) DestroyClient(socket connection.Connection) error {
 	id := socket.Id()
 	if c, ok := h.clientsById[id]; ok {
 		if room, inRoom := c.GetRoom(); inRoom {

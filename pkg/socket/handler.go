@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	sockio "github.com/googollee/go-socket.io"
-
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
+	socketserver "github.com/juanvallejo/streaming-server/pkg/socket/server"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
@@ -22,22 +22,22 @@ type Handler struct {
 	PlaybackHandler playback.StreamPlaybackHandler
 	StreamHandler   stream.StreamHandler
 
-	server *Server
+	server *socketserver.Server
 }
 
 const (
 	ROOM_DEFAULT_LOBBY           = "lobby"
-	ROOM_DEFAULT_STREAMSYNC_RATE = 25 // seconds to wait before emitting streamsync to clients
+	ROOM_DEFAULT_STREAMSYNC_RATE = 15 // seconds to wait before emitting streamsync to clients
 )
 
-func (h *Handler) HandleClientConnection(conn sockio.Socket) {
+func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	log.Printf("INFO SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
 
 	h.RegisterClient(conn)
 	log.Printf("INFO SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
 
 	// TODO: remove room's StreamPlayback once last client has left
-	conn.On("disconnection", func() {
+	conn.On("disconnection", func(data *connection.Message) {
 		log.Printf("INFO DCONN SOCKET client with id %q has disconnected\n", conn.Id())
 
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
@@ -57,10 +57,16 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 	})
 
 	// this event is received when a client is requesting a username update
-	conn.On("request_updateusername", func(data map[string]string) {
-		username, ok := data["user"]
+	conn.On("request_updateusername", func(data *connection.Message) {
+		rawUsername, ok := data.Data["user"]
 		if !ok {
 			log.Printf("ERR SOCKET CLIENT client %q sent malformed request to update username. Ignoring request.", conn.Id())
+			return
+		}
+
+		username, ok := rawUsername.(string)
+		if !ok {
+			log.Printf("ERR SOCKET CLIENT client %q sent a non-string value for the field %q", conn.Id(), "username")
 			return
 		}
 
@@ -80,8 +86,8 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 	})
 
 	// this event is received when a client is requesting to broadcast a chat message
-	conn.On("request_chatmessage", func(data map[string]interface{}) {
-		username, ok := data["user"]
+	conn.On("request_chatmessage", func(data *connection.Message) {
+		username, ok := data.Data["user"]
 		if ok {
 			log.Printf("INFO SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
 		}
@@ -92,7 +98,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 			return
 		}
 
-		command, isCommand, err := h.ParseCommandMessage(c, data)
+		command, isCommand, err := h.ParseCommandMessage(c, data.Data)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
@@ -125,14 +131,14 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 		// 	log.Printf("SOCKET CLIENT WARN ")
 		// }
 
-		res := client.ResponseFromClientData(data)
+		res := client.ResponseFromClientData(data.Data)
 		c.BroadcastAll("chatmessage", &res)
 
 		fmt.Printf("INFO SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
 	// this event is received when a client is requesting current stream state information
-	conn.On("request_streamsync", func(data map[string]interface{}) {
+	conn.On("request_streamsync", func(data *connection.Message) {
 		log.Printf("INFO SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
@@ -161,7 +167,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 	})
 
 	// this event is received when a client is requesting to update stream state information in the server
-	conn.On("streamdata", func(data map[string]interface{}) {
+	conn.On("streamdata", func(data *connection.Message) {
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
@@ -187,7 +193,7 @@ func (h *Handler) HandleClientConnection(conn sockio.Socket) {
 			return
 		}
 
-		jsonData, err := json.Marshal(data)
+		jsonData, err := json.Marshal(data.Data)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to convert received data map into json string: %v", err)
 		}
@@ -234,10 +240,10 @@ func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]int
 // If a streamPlayback already exists for the current "room" and the streamPlayback has a reference to a
 // stream.Stream, a "streamload" event is sent to the client with the current stream.Stream information.
 // This method is not concurrency-safe.
-func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
-	log.Printf("INFO SOCKET CLIENT registering client with id %q\n", sockioconn.Id())
+func (h *Handler) RegisterClient(conn connection.Connection) {
+	log.Printf("INFO SOCKET CLIENT registering client with id %q\n", conn.Id())
 
-	roomName, err := util.GetRoomNameFromRequest(sockioconn.Request())
+	roomName, err := util.GetRoomNameFromRequest(conn.Request())
 	if err != nil {
 		log.Printf("WARN SOCKET CLIENT websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
 		roomName = ROOM_DEFAULT_LOBBY
@@ -245,7 +251,7 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 
 	log.Printf("INFO SOCKET CLIENT assigning client to room with name %q", roomName)
 
-	c := h.clientHandler.CreateClient(sockioconn)
+	c := h.clientHandler.CreateClient(conn)
 	c.JoinRoom(roomName)
 
 	c.BroadcastFrom("info_clientjoined", &client.Response{
@@ -313,8 +319,8 @@ func (h *Handler) RegisterClient(sockioconn sockio.Socket) {
 	}
 }
 
-func (h *Handler) DeregisterClient(sockioconn sockio.Socket) error {
-	err := h.clientHandler.DestroyClient(sockioconn)
+func (h *Handler) DeregisterClient(conn connection.Connection) error {
+	err := h.clientHandler.DestroyClient(conn)
 	if err != nil {
 		return fmt.Errorf("error: unable to de-register client: %v", err)
 	}
@@ -326,18 +332,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func NewHandler(commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) *Handler {
-	socketServer, err := NewServer(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	handler := &Handler{
 		clientHandler:   clientHandler,
 		CommandHandler:  commandHandler,
 		PlaybackHandler: playbackHandler,
 		StreamHandler:   streamHandler,
 
-		server: socketServer,
+		server: socketserver.NewServer(),
 	}
 
 	handler.addRequestHandlers()
@@ -345,7 +346,7 @@ func NewHandler(commandHandler cmd.SocketCommandHandler, clientHandler client.So
 }
 
 func (h *Handler) addRequestHandlers() {
-	h.server.On("connection", func(sockioconn sockio.Socket) {
-		h.HandleClientConnection(sockioconn)
+	h.server.On("connection", func(conn connection.Connection) {
+		h.HandleClientConnection(conn)
 	})
 }
