@@ -87,13 +87,13 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 
 // QueueStreamUrl receives a stream url and pushes a loaded stream.Stream
 // to the end of the playback queue for a given userId.
-func (p *StreamPlayback) QueueStreamFromUrl(url string, userId string, streamHandler stream.StreamHandler) error {
+func (p *StreamPlayback) QueueStreamFromUrl(url string, user *client.Client, streamHandler stream.StreamHandler) error {
 	s, err := p.GetOrCreateStreamFromUrl(url, streamHandler)
 	if err != nil {
 		return err
 	}
 
-	p.queue.Push(userId, s)
+	p.queue.Push(user.GetId(), s)
 	return nil
 }
 
@@ -129,7 +129,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	// if created new stream, fetch its duration info
 	s.FetchInfo(func(s stream.Stream, data []byte, err error) {
 		if err != nil {
-			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK error: %v", err)
+			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK unable to calculate video metadata. Some information, such as media duration, will not be available: %v", err)
 			return
 		}
 

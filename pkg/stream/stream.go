@@ -1,13 +1,18 @@
 package stream
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 
+	pathutil "github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
 )
 
@@ -15,6 +20,8 @@ const (
 	STREAM_TYPE_YOUTUBE = "youtube"
 	STREAM_TYPE_LOCAL   = "movie"
 	STREAM_TYPE_TWITCH  = "twitch"
+
+	DEFAULT_LIB_AV_BIN = "ffprobe" // used to extract local media file metadata
 
 	YT_API_KEY = "AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M"
 )
@@ -72,7 +79,7 @@ func (s *StreamSchema) GetDuration() float64 {
 }
 
 func (s *StreamSchema) FetchInfo(callback StreamFetchInfoCallback) {
-	callback(s, nil, fmt.Errorf("unimplemented procedure"))
+	callback(s, nil, fmt.Errorf("Stream schema of kind %q has no FetchInfo method defined.", s.kind))
 }
 
 func (s *StreamSchema) SetInfo(data []byte) error {
@@ -187,6 +194,50 @@ func (s *YouTubeStream) FetchInfo(callback StreamFetchInfoCallback) {
 // a local filepath.
 type LocalVideoStream struct {
 	*StreamSchema
+
+	libAvRootPath string
+	libAvFile     string
+}
+
+func (s *LocalVideoStream) FetchInfo(callback StreamFetchInfoCallback) {
+	if len(s.libAvRootPath) == 0 {
+		callback(s, []byte{}, fmt.Errorf("unsupported os. Skipping local file duration calculation."))
+		return
+	}
+
+	go func(libRootPath string, callback StreamFetchInfoCallback) {
+		fpath := pathutil.StreamDataFilePathFromUrl(s.url)
+
+		args := []string{"-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", fpath}
+		command := exec.Command(s.libAvRootPath+s.libAvFile, args...)
+
+		var buff bytes.Buffer
+		command.Stdout = &buff
+
+		err := command.Run()
+		if err != nil {
+			callback(s, []byte{}, err)
+			return
+		}
+
+		duration, err := strconv.ParseFloat(strings.Trim(buff.String(), "\n"), 32)
+		if err != nil {
+			callback(s, []byte{}, err)
+			return
+		}
+
+		kv := map[string]interface{}{
+			"duration": duration,
+		}
+
+		m, err := json.Marshal(kv)
+		if err != nil {
+			callback(s, []byte{}, err)
+			return
+		}
+
+		callback(s, m, nil)
+	}(s.libAvRootPath, callback)
 }
 
 // TwitchStream implements Stream
@@ -223,11 +274,29 @@ func NewTwitchStream(url string) Stream {
 }
 
 func NewLocalVideoStream(filepath string) Stream {
+	libAvBin := DEFAULT_LIB_AV_BIN
+
+	ops := runtime.GOOS
+	avRootPath := "lib/linux/x86_64/"
+	if ops == "windows" {
+		avRootPath = "lib/windows/x86_64/"
+		libAvBin = libAvBin + ".exe"
+	} else if ops == "darwin" {
+		avRootPath = "lib/darwin/x86_64/"
+	} else {
+		if ops != "linux" {
+			avRootPath = ""
+		}
+	}
+
 	return &LocalVideoStream{
-		&StreamSchema{
+		StreamSchema: &StreamSchema{
 			url:  filepath,
 			kind: STREAM_TYPE_LOCAL,
 		},
+
+		libAvRootPath: avRootPath,
+		libAvFile:     libAvBin,
 	}
 }
 

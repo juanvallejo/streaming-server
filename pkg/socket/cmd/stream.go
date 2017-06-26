@@ -108,7 +108,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
-		err = sPlayback.QueueStreamFromUrl(url, user.GetId(), streamHandler)
+		err = sPlayback.QueueStreamFromUrl(url, user, streamHandler)
 		if err != nil {
 			return "", err
 		}
