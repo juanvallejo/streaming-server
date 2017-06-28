@@ -17,6 +17,7 @@ type RequestHandler struct {
 	router         *RequestRouter
 	paths          map[string]path.Path
 	sockReqHandler *socket.Handler
+	apiHandler     api.Handler
 }
 
 // ServeHTTP handles incoming http requests. A request is handled based on its
@@ -33,9 +34,10 @@ type RequestHandler struct {
 // 		"path", which requires a path-handler for that specific url to have been registered.
 func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	url := h.router.Route(r.URL.String())
+	segs := strings.Split(url, "/")
 
 	// handle websocket requests
-	if strings.HasPrefix(url, path.SocketRootUrl) {
+	if "/"+segs[1] == path.SocketRootUrl {
 		if h.sockReqHandler != nil {
 			h.sockReqHandler.ServeHTTP(w, r)
 			return
@@ -65,8 +67,8 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// handle urls for api requests
-	if strings.HasPrefix(url, path.ApiRootUrl) {
-		api.ServeHTTP(w, r)
+	if "/"+segs[1] == path.ApiRootUrl {
+		h.apiHandler.ServeHTTP(w, r)
 		return
 	}
 
@@ -124,6 +126,7 @@ func NewRequestHandler(socketRequestHandler *socket.Handler) *RequestHandler {
 		router:         NewRequestRouter(),
 		paths:          make(map[string]path.Path),
 		sockReqHandler: socketRequestHandler,
+		apiHandler:     api.NewHandler(),
 	}
 	addRequestHandlers(handler)
 	return handler

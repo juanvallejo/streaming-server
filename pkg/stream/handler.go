@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/juanvallejo/streaming-server/pkg/server/path"
+	paths "github.com/juanvallejo/streaming-server/pkg/server/path"
 )
 
 type StreamHandler interface {
@@ -63,11 +63,11 @@ func (h *Handler) NewStream(url string) (Stream, error) {
 		return nil, fmt.Errorf("error: stream resource location interpreted as url, but stream source is not supported for: %q", url)
 	}
 
-	fpath := path.StreamDataFilePathFromFilename(url)
+	fpath := paths.StreamDataFilePathFromFilename(url)
 
 	// determine if a mimetype can be determined from the requested filepath,
 	// and that the mimetype (if any) is supported.
-	mimeType, err := path.FileMimeFromFilePath(url)
+	mimeType, err := paths.FileMimeFromFilePath(url)
 	if err != nil || !strings.HasPrefix(mimeType, "video") {
 		log.Printf("ERR SOCKET CLIENT error parsing file mimetype (%q): %v", mimeType, err)
 		return nil, fmt.Errorf("unable to load %q. Unsupported streaming file.", url)

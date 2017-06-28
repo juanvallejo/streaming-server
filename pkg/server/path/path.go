@@ -8,7 +8,7 @@ import (
 
 var (
 	ApiRootUrl    = "/api"
-	FileRootUrl   = "/src/static"
+	FileRootUrl   = "/src/static/"
 	SocketRootUrl = "/ws"
 	RoomRootUrl   = "/room"
 	StreamRootUrl = "/stream"
