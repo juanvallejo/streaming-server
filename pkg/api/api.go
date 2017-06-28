@@ -1,61 +1,99 @@
 package api
 
 import (
-	"io"
+	"errors"
 	"log"
 	"net"
 	"net/http"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/discovery"
+	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
 )
 
-const ApiSuffix = "/api"
+const (
+	ApiPrefix = "/api"
+)
 
-var registeredEndpoints map[string]func(w http.ResponseWriter, r *http.Request)
+var (
+	ErrMalformed = errors.New("malformed api endpoint; should be /api/...")
+)
 
-func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !strings.HasSuffix(r.URL.String(), ApiSuffix) {
+type ApiHandlerFunc func(w http.ResponseWriter, r *http.Request)
+
+// Handler provides api handler methods
+// and implements http.Handler
+type Handler interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}
+
+// ApiHandler implements Handler
+type ApiHandler struct {
+	endpoints map[string]endpoint.ApiEndpoint
+}
+
+func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.URL.String(), ApiPrefix) {
 		panic("API Request could not be handled for non api-formatted url")
 	}
 
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	log.Printf("API Serving request from %s for endpoint %q\n", ip, r.URL.String())
 
-	apiPath := strings.Split(r.URL.String(), ApiSuffix)[1]
-	if len(apiPath) == 0 {
-		discovery.ServeDiscoveryEndpoint(w, r)
+	h.HandleEndpoint(r.URL.String(), w, r)
+}
+
+func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.Request) {
+	// sanitize api string; if it ends in a "/", remove...
+	l := path[len(path)-1]
+	if string(l) == "/" {
+		path = path[0 : len(path)-1]
+	}
+
+	segs := strings.Split(path, "/")
+	if "/"+segs[1] != ApiPrefix {
+		endpoint.HandleEndpointError(ErrMalformed, w)
 		return
 	}
 
-	io.WriteString(w, "{}")
+	if len(segs) < 3 || (len(segs) == 3 && len(segs[2]) == 0) {
+		// if two, path was /api
+		if len(segs) > 1 && ("/"+segs[1]) == ApiPrefix {
+			discovery.ServeDiscoveryEndpoint(w, r)
+			return
+		}
+
+		endpoint.HandleEndpointError(ErrMalformed, w)
+		return
+	}
+
+	root := "/" + segs[2] // segs[1] should be ApiPrefix
+
+	if e, exists := h.endpoints[ApiPrefix+root]; exists {
+		e.Handle(segs[2:], w, r)
+		return
+	}
+
+	log.Printf("ERR API unable to handle missing endpoint %q", path)
+	endpoint.HandleEndpointNotFound(w)
 }
 
-// HandleWatchRequest handles socket.io client requests for different api resources
-func HandleWatchRequest(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, "socket.io")
-}
-
-func handleApiStreams(w http.ResponseWriter, r *http.Request) {
+func (h *ApiHandler) registerEndpoint(e endpoint.ApiEndpoint) {
+	h.endpoints[ApiPrefix+e.GetPath()] = e
 
 }
 
-func handleApiUsers(w http.ResponseWriter, r *http.Request) {
-
+func NewHandler() Handler {
+	handler := &ApiHandler{
+		endpoints: make(map[string]endpoint.ApiEndpoint),
+	}
+	handler.registerDefaultEndpoints()
+	return handler
 }
 
-func handleApiMovies(w http.ResponseWriter, r *http.Request) {
+func (h *ApiHandler) registerDefaultEndpoints() {
+	h.registerEndpoint(endpoint.NewStreamEndpoint())
 
-}
-
-func RegisterDefaultEndpoints() {
-	registeredEndpoints = make(map[string]func(w http.ResponseWriter, r *http.Request))
-
-	registeredEndpoints["/api/streams"] = handleApiStreams
-	registeredEndpoints["/api/users"] = handleApiUsers
-	registeredEndpoints["/api/movies"] = handleApiMovies
-}
-
-func init() {
-	RegisterDefaultEndpoints()
+	//registeredEndpoints["/api/users"] = handleApiUsers
+	//registeredEndpoints["/api/movies"] = handleApiMovies
 }
