@@ -26,7 +26,7 @@ const (
 	YT_API_KEY = "AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M"
 )
 
-type StreamFetchInfoCallback func(Stream, []byte, error)
+type StreamMetadataCallback func(Stream, []byte, error)
 
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
@@ -43,43 +43,54 @@ type Stream interface {
 	// GetInfo returns a map -> interface{} of json friendly data
 	// describing the current stream object
 	GetInfo() map[string]interface{}
-	// FetchInfo calls the necessary apis / libraries needed to load
-	// extra stream information
-	FetchInfo(StreamFetchInfoCallback)
+	// FetchMetadata calls the necessary apis / libraries needed to load
+	// extra stream information in a separate goroutine. This asynchronous
+	// method calls a passed callback function with retrieved metadata info.
+	FetchMetadata(StreamMetadataCallback)
 	// SetInfo receives a map of string->interface{} and unmarshals it into
 	SetInfo([]byte) error
 }
 
 // StreamSchema implements Stream
+// also implements an pkg/api/types.ApiCodec
 type StreamSchema struct {
-	// kind describes the type of stream resource
-	kind string
-	// name describes a title assigned to the stream resource
-	name string
-	// url is a fully qualified resource locator
-	url string
-	// duration is the total time for the current stream
+	// Kind describes the type of stream resource
+	Kind string `json:"kind"`
+	// Name describes a title assigned to the stream resource
+	Name string `json:"name"`
+	// Url is a fully qualified resource locator
+	Url string `json:"url"`
+	// Duration is the total time for the current stream
 	Duration float64 `json:"duration"`
 }
 
 func (s *StreamSchema) GetStreamURL() string {
-	return s.url
+	return s.Url
 }
 
 func (s *StreamSchema) GetName() string {
-	return s.name
+	return s.Name
 }
 
 func (s *StreamSchema) GetKind() string {
-	return s.kind
+	return s.Kind
 }
 
 func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
 }
 
-func (s *StreamSchema) FetchInfo(callback StreamFetchInfoCallback) {
-	callback(s, nil, fmt.Errorf("Stream schema of kind %q has no FetchInfo method defined.", s.kind))
+func (s *StreamSchema) FetchMetadata(callback StreamMetadataCallback) {
+	callback(s, nil, fmt.Errorf("Stream schema of kind %q has no FetchMetadata method implemented.", s.Kind))
+}
+
+func (s *StreamSchema) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
 }
 
 func (s *StreamSchema) SetInfo(data []byte) error {
@@ -87,11 +98,18 @@ func (s *StreamSchema) SetInfo(data []byte) error {
 }
 
 func (s *StreamSchema) GetInfo() map[string]interface{} {
-	return map[string]interface{}{
-		"kind": s.kind,
-		"name": s.name,
-		"url":  s.url,
+	m := make(map[string]interface{})
+	b, err := s.Serialize()
+	if err != nil {
+		return m
 	}
+
+	err = json.Unmarshal(b, &m)
+	if err != nil {
+		return m
+	}
+
+	return m
 }
 
 // YouTubeStream implements Stream
@@ -137,14 +155,14 @@ func (yt *YouTubeVideoItem) ParseDuration() error {
 	return nil
 }
 
-func (s *YouTubeStream) FetchInfo(callback StreamFetchInfoCallback) {
-	videoId, err := ytVideoIdFromUrl(s.url)
+func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
+	videoId, err := ytVideoIdFromUrl(s.Url)
 	if err != nil {
 		callback(s, []byte{}, err)
 		return
 	}
 
-	go func(videoId, apiKey string, callback StreamFetchInfoCallback) {
+	go func(videoId, apiKey string, callback StreamMetadataCallback) {
 		res, err := http.Get("https://www.googleapis.com/youtube/v3/videos?id=" + videoId + "&key=" + apiKey + "&part=contentDetails")
 		if err != nil {
 			callback(s, nil, err)
@@ -199,45 +217,53 @@ type LocalVideoStream struct {
 	libAvFile     string
 }
 
-func (s *LocalVideoStream) FetchInfo(callback StreamFetchInfoCallback) {
+func (s *LocalVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 	if len(s.libAvRootPath) == 0 {
 		callback(s, []byte{}, fmt.Errorf("unsupported os. Skipping local file duration calculation."))
 		return
 	}
 
-	go func(libRootPath string, callback StreamFetchInfoCallback) {
-		fpath := pathutil.StreamDataFilePathFromUrl(s.url)
-
-		args := []string{"-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", fpath}
-		command := exec.Command(s.libAvRootPath+s.libAvFile, args...)
-
-		var buff bytes.Buffer
-		command.Stdout = &buff
-
-		err := command.Run()
+	go func(s *LocalVideoStream, callback StreamMetadataCallback) {
+		data, err := FetchLocalVideoMetadata(s)
 		if err != nil {
 			callback(s, []byte{}, err)
 			return
 		}
 
-		duration, err := strconv.ParseFloat(strings.Trim(buff.String(), "\n"), 32)
-		if err != nil {
-			callback(s, []byte{}, err)
-			return
-		}
+		callback(s, data, nil)
+	}(s, callback)
+}
 
-		kv := map[string]interface{}{
-			"duration": duration,
-		}
+// FetchLocalVideoMetadata is a blocking function that retrieves metadata for a local video stream
+func FetchLocalVideoMetadata(s *LocalVideoStream) ([]byte, error) {
+	fpath := pathutil.StreamDataFilePathFromUrl(s.Url)
 
-		m, err := json.Marshal(kv)
-		if err != nil {
-			callback(s, []byte{}, err)
-			return
-		}
+	args := []string{"-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", fpath}
+	command := exec.Command(s.libAvRootPath+s.libAvFile, args...)
 
-		callback(s, m, nil)
-	}(s.libAvRootPath, callback)
+	var buff bytes.Buffer
+	command.Stdout = &buff
+
+	err := command.Run()
+	if err != nil {
+		return []byte{}, err
+	}
+
+	duration, err := strconv.ParseFloat(strings.Trim(buff.String(), "\n"), 32)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	kv := map[string]interface{}{
+		"duration": duration,
+	}
+
+	m, err := json.Marshal(kv)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return m, nil
 }
 
 // TwitchStream implements Stream
@@ -256,8 +282,8 @@ func NewYouTubeStream(url string) Stream {
 
 	return &YouTubeStream{
 		StreamSchema: &StreamSchema{
-			url:  url,
-			kind: STREAM_TYPE_YOUTUBE,
+			Url:  url,
+			Kind: STREAM_TYPE_YOUTUBE,
 		},
 
 		apiKey: YT_API_KEY,
@@ -267,8 +293,8 @@ func NewYouTubeStream(url string) Stream {
 func NewTwitchStream(url string) Stream {
 	return &TwitchStream{
 		&StreamSchema{
-			url:  url,
-			kind: STREAM_TYPE_TWITCH,
+			Url:  url,
+			Kind: STREAM_TYPE_TWITCH,
 		},
 	}
 }
@@ -291,8 +317,8 @@ func NewLocalVideoStream(filepath string) Stream {
 
 	return &LocalVideoStream{
 		StreamSchema: &StreamSchema{
-			url:  filepath,
-			kind: STREAM_TYPE_LOCAL,
+			Url:  filepath,
+			Kind: STREAM_TYPE_LOCAL,
 		},
 
 		libAvRootPath: avRootPath,

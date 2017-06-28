@@ -127,7 +127,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	}
 
 	// if created new stream, fetch its duration info
-	s.FetchInfo(func(s stream.Stream, data []byte, err error) {
+	s.FetchMetadata(func(s stream.Stream, data []byte, err error) {
 		if err != nil {
 			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK unable to calculate video metadata. Some information, such as media duration, will not be available: %v", err)
 			return
