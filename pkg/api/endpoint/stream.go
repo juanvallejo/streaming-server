@@ -22,10 +22,6 @@ type StreamEndpoint struct {
 	*ApiEndpointSchema
 }
 
-type StreamEndpointResponse struct {
-	Streams []string `json:"streams"`
-}
-
 // Handle returns a "discovery" of all local streams in the server data root.
 func (e *StreamEndpoint) Handle(segments []string, w http.ResponseWriter, r *http.Request) {
 	dir, err := ioutil.ReadDir(paths.StreamDataRootPath)
