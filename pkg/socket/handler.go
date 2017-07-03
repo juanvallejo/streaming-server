@@ -263,10 +263,6 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 		log.Printf("INFO SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
 		sPlayback = h.PlaybackHandler.NewStreamPlayback(roomName)
 		sPlayback.OnTick(func(currentTime int) {
-			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
-				return
-			}
-
 			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 			if !exists {
 				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT attempted to send streamsync event to client, but stream playback does not exist.")
@@ -294,7 +290,20 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
 						currPlayback.Stop()
 					}
+
+					// emit updated playback state to client if stream has ended
+					log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
+					c.BroadcastAll("streamsync", &client.Response{
+						Id:    c.GetId(),
+						Extra: currPlayback.GetStatus(),
+					})
 				}
+			}
+
+			// if stream timer has not reached its duration, wait until next ROOM_DEFAULT_STREAMSYNC_RATE tick
+			// before updating client with playback information
+			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
+				return
 			}
 
 			log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
