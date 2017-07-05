@@ -62,6 +62,8 @@ type StreamSchema struct {
 	Url string `json:"url"`
 	// Duration is the total time for the current stream
 	Duration float64 `json:"duration"`
+	// Thumbnail is a url pointing to a still of the stream
+	Thumbnail string `json:"thumb"`
 }
 
 func (s *StreamSchema) GetStreamURL() string {
@@ -280,10 +282,17 @@ func NewYouTubeStream(url string) Stream {
 		url = segs[0]
 	}
 
+	thumb := ""
+	id, err := ytVideoIdFromUrl(url)
+	if err == nil {
+		thumb = "https://img.youtube.com/vi/" + id + "/default.jpg"
+	}
+
 	return &YouTubeStream{
 		StreamSchema: &StreamSchema{
-			Url:  url,
-			Kind: STREAM_TYPE_YOUTUBE,
+			Url:       url,
+			Thumbnail: thumb,
+			Kind:      STREAM_TYPE_YOUTUBE,
 		},
 
 		apiKey: YT_API_KEY,
