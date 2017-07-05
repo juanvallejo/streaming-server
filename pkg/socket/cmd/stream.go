@@ -49,6 +49,10 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")
 	}
 
+	// used as flag to allow "play" to assume "skip" behavior when no
+	// stream is contained within the playback object.
+	playStreamOnSkip := false
+
 	switch args[0] {
 	case "info":
 		// return stream playback info in the "Extra" field of a client.Response
@@ -58,6 +62,26 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		}
 
 		return output, nil
+	case "play":
+		// if a stream has not been set, fallthrough - allow "play"
+		// to behave like "skip". If a stream has been set, allow
+		// "play" case below to handle command.
+		_, streamExists := sPlayback.GetStream()
+		if streamExists {
+			err := sPlayback.Play()
+			if err != nil {
+				return "", err
+			}
+			user.BroadcastAll("streamsync", &client.Response{
+				Id:    user.GetId(),
+				From:  username,
+				Extra: sPlayback.GetStatus(),
+			})
+			return "playing stream...", nil
+		}
+
+		playStreamOnSkip = true
+		fallthrough
 	case "skip":
 		// skip the currently-playing stream and replace it with the next item in the queue
 		queue := sPlayback.GetQueue()
@@ -69,6 +93,10 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		sPlayback.SetStream(nextStream)
 		sPlayback.Reset()
 		sPlayback.UpdateStartedBy(user)
+
+		if playStreamOnSkip {
+			sPlayback.Play()
+		}
 
 		user.BroadcastAll("streamload", &client.Response{
 			Id:    user.GetId(),
@@ -160,17 +188,6 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			Extra: sPlayback.GetStatus(),
 		})
 		return "stopping stream...", nil
-	case "play":
-		err := sPlayback.Play()
-		if err != nil {
-			return "", err
-		}
-		user.BroadcastAll("streamsync", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: sPlayback.GetStatus(),
-		})
-		return "playing stream...", nil
 	case "seek":
 		if len(args) < 2 || len(args[1]) == 0 {
 			return "", fmt.Errorf("a time (in seconds) must be provided. See usage info.")
