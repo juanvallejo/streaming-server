@@ -137,6 +137,42 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		fmt.Printf("INFO SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
+	// this event is received when a client is requesting the current queue state
+	conn.On("request_queuesync", func(data *connection.Message) {
+		log.Printf("INFO SOCKET CLIENT client with id %q requested a queue-sync", conn.Id())
+
+		c, err := h.clientHandler.GetClient(conn.Id())
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			return
+		}
+
+		sPlayback, err := h.getPlaybackFromClient(c)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT %v", err)
+			c.BroadcastErrorTo(err)
+			return
+		}
+
+		res := &client.Response{
+			Id:   c.GetId(),
+			From: "system",
+		}
+
+		qStatus := sPlayback.GetQueueStatus()
+		b, err := qStatus.Serialize()
+		if err != nil {
+			return
+		}
+
+		err = json.Unmarshal(b, &res.Extra)
+		if err != nil {
+			return
+		}
+
+		c.BroadcastTo("queuesync", res)
+	})
+
 	// this event is received when a client is requesting current stream state information
 	conn.On("request_streamsync", func(data *connection.Message) {
 		log.Printf("INFO SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
@@ -147,16 +183,10 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		roomName, exists := c.GetRoom()
-		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
-			return
-		}
-
-		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
-		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.GetId())
-			c.BroadcastErrorTo(fmt.Errorf("Warning: could not update stream playback. No room could be detected."))
+		sPlayback, err := h.getPlaybackFromClient(c)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT %v", err)
+			c.BroadcastErrorTo(err)
 			return
 		}
 
@@ -269,34 +299,36 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 				return
 			}
 
-			currStream, exists := currPlayback.GetStream()
-			if exists {
-				// if stream exists and playback timer >= playback stream duration, stop stream
-				// or queue the next item in the playback queue (if queue not empty)
-				if currStream.GetDuration() > 0 && float64(currPlayback.GetTime()) >= currStream.GetDuration() {
-					queue := currPlayback.GetQueue()
-					nextStream, err := queue.Pop()
-					if err == nil {
-						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
+			if currentTime%2 == 0 {
+				currStream, exists := currPlayback.GetStream()
+				if exists {
+					// if stream exists and playback timer >= playback stream duration, stop stream
+					// or queue the next item in the playback queue (if queue not empty)
+					if currStream.GetDuration() > 0 && float64(currPlayback.GetTime()) >= currStream.GetDuration() {
+						queue := currPlayback.GetQueue()
+						nextStream, err := queue.Pop()
+						if err == nil {
+							log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
 
-						currPlayback.SetStream(nextStream)
-						currPlayback.Reset()
-						c.BroadcastAll("streamload", &client.Response{
+							currPlayback.SetStream(nextStream)
+							currPlayback.Reset()
+							c.BroadcastAll("streamload", &client.Response{
+								Id:    c.GetId(),
+								From:  "system",
+								Extra: nextStream.GetInfo(),
+							})
+						} else {
+							log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
+							currPlayback.Stop()
+						}
+
+						// emit updated playback state to client if stream has ended
+						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
+						c.BroadcastAll("streamsync", &client.Response{
 							Id:    c.GetId(),
-							From:  "system",
-							Extra: nextStream.GetInfo(),
+							Extra: currPlayback.GetStatus(),
 						})
-					} else {
-						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
-						currPlayback.Stop()
 					}
-
-					// emit updated playback state to client if stream has ended
-					log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
-					c.BroadcastAll("streamsync", &client.Response{
-						Id:    c.GetId(),
-						Extra: currPlayback.GetStatus(),
-					})
 				}
 			}
 
@@ -334,6 +366,20 @@ func (h *Handler) DeregisterClient(conn connection.Connection) error {
 		return fmt.Errorf("error: unable to de-register client: %v", err)
 	}
 	return nil
+}
+
+func (h *Handler) getPlaybackFromClient(c *client.Client) (*playback.StreamPlayback, error) {
+	roomName, exists := c.GetRoom()
+	if !exists {
+		return nil, fmt.Errorf("client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+	}
+
+	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+	if !exists {
+		return nil, fmt.Errorf("Warning: could not update stream playback. No room could be detected.")
+	}
+
+	return sPlayback, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -5,6 +5,8 @@ import (
 	"log"
 	"strconv"
 
+	"encoding/json"
+
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
@@ -113,6 +115,23 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		qStatus := sPlayback.GetQueueStatus()
+		b, err := qStatus.Serialize()
+		if err != nil {
+			return "", err
+		}
+
+		err = json.Unmarshal(b, &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("queuesync", res)
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, url))
 		return fmt.Sprintf("successfully queued %q", url), nil
 

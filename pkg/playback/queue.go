@@ -3,6 +3,9 @@ package playback
 import (
 	"fmt"
 
+	"encoding/json"
+
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -21,6 +24,8 @@ type PlaybackQueue interface {
 	Push(string, stream.Stream)
 	// Size returns the total count of streams in all QueueItems in the Queue
 	Size() int
+	// Status returns a top-level serializable view of the queue
+	Status() api.ApiCodec
 }
 
 // A queue item maps a unique id to a stack of stream.Streams
@@ -105,6 +110,32 @@ func (q *Queue) Size() int {
 		size += len(i.streams)
 	}
 	return size
+}
+
+// QueueStatus is a schema representing the top-level state of the queue.
+type QueueStatus struct {
+	// Streams is a slice containing the first item in each queue-item stack
+	Items []stream.Stream `json:"items"`
+}
+
+func (s *QueueStatus) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
+func (q *Queue) Status() api.ApiCodec {
+	items := []stream.Stream{}
+	for _, i := range q.items {
+		items = append(items, i.streams[0])
+	}
+
+	return &QueueStatus{
+		Items: items,
+	}
 }
 
 func NewQueue() PlaybackQueue {

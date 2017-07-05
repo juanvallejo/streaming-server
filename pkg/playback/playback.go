@@ -3,6 +3,7 @@ package playback
 import (
 	"log"
 
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
@@ -142,6 +143,11 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 
 	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
 	return s, nil
+}
+
+// GetQueueStatus returns an ApiCodec describing the queue's current state
+func (p *StreamPlayback) GetQueueStatus() api.ApiCodec {
+	return p.queue.Status()
 }
 
 // Returns a map compatible with json types
