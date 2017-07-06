@@ -162,7 +162,7 @@ func (p *StreamPlayback) GetStatus() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"queueSize":      p.queue.Size(),
+		"queueLength":    p.queue.Length(),
 		"streamUrl":      streamUrl,
 		"streamDuration": streamDuration,
 		"timer":          p.GetTime(),

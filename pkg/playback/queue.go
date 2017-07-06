@@ -1,9 +1,8 @@
 package playback
 
 import (
-	"fmt"
-
 	"encoding/json"
+	"fmt"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
@@ -24,7 +23,10 @@ type PlaybackQueue interface {
 	Push(string, stream.Stream)
 	// Size returns the total count of streams in all QueueItems in the Queue
 	Size() int
+	// Length returns the total count of QueueItems in the Queue
+	Length() int
 	// Status returns a top-level serializable view of the queue
+	// in order, starting from QueueItem[round-robin-index]
 	Status() api.ApiCodec
 }
 
@@ -112,6 +114,10 @@ func (q *Queue) Size() int {
 	return size
 }
 
+func (q *Queue) Length() int {
+	return len(q.items)
+}
+
 // QueueStatus is a schema representing the top-level state of the queue.
 type QueueStatus struct {
 	// Streams is a slice containing the first item in each queue-item stack
@@ -132,6 +138,9 @@ func (q *Queue) Status() api.ApiCodec {
 	for _, i := range q.items {
 		items = append(items, i.streams[0])
 	}
+
+	// order items by current round-robin count
+	items = append(items[q.rrCount:], items[0:q.rrCount]...)
 
 	return &QueueStatus{
 		Items: items,
