@@ -57,7 +57,7 @@ func (h *ConnNamespace) RemoveFromNamespace(ns string, conn Connection) {
 		}
 	}
 
-	log.Printf("WARN SOCKET CONN NAMESPACE attempt to remove connection (%q) from namespace (%q) but connection was not found.", conn.Id(), ns)
+	log.Printf("WRN SOCKET CONN NAMESPACE attempt to remove connection (%q) from namespace (%q) but connection was not found.", conn.Id(), ns)
 }
 
 func (h *ConnNamespace) Broadcast(messageType int, ns, eventName string, data []byte) {

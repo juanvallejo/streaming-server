@@ -31,14 +31,14 @@ const (
 )
 
 func (h *Handler) HandleClientConnection(conn connection.Connection) {
-	log.Printf("INFO SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
+	log.Printf("INF SOCKET CONN client (%s) has connected with id %q\n", conn.Request().RemoteAddr, conn.Id())
 
 	h.RegisterClient(conn)
-	log.Printf("INFO SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
+	log.Printf("INF SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
 
 	// TODO: remove room's StreamPlayback once last client has left
-	conn.On("disconnection", func(data *connection.Message) {
-		log.Printf("INFO DCONN SOCKET client with id %q has disconnected\n", conn.Id())
+	conn.On("disconnection", func(data *connection.MessageData) {
+		log.Printf("INF DCONN SOCKET client with id %q has disconnected\n", conn.Id())
 
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
 			userName, exists := c.GetUsername()
@@ -57,8 +57,8 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting a username update
-	conn.On("request_updateusername", func(data *connection.Message) {
-		rawUsername, ok := data.Data["user"]
+	conn.On("request_updateusername", func(data *connection.MessageData) {
+		rawUsername, ok := data.Get("user")
 		if !ok {
 			log.Printf("ERR SOCKET CLIENT client %q sent malformed request to update username. Ignoring request.", conn.Id())
 			return
@@ -86,10 +86,10 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting to broadcast a chat message
-	conn.On("request_chatmessage", func(data *connection.Message) {
-		username, ok := data.Data["user"]
+	conn.On("request_chatmessage", func(data *connection.MessageData) {
+		username, ok := data.Get("user")
 		if ok {
-			log.Printf("INFO SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
+			log.Printf("INF SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
 		}
 
 		c, err := h.clientHandler.GetClient(conn.Id())
@@ -98,7 +98,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		command, isCommand, err := h.ParseCommandMessage(c, data.Data)
+		command, isCommand, err := h.ParseCommandMessage(c, *data)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
@@ -112,7 +112,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				cmdArgs = cmdSegments[1:]
 			}
 
-			log.Printf("INFO SOCKET CLIENT interpreting chat message as user command %q for client id (%q) with name %q", command, conn.Id(), username)
+			log.Printf("INF SOCKET CLIENT interpreting chat message as user command %q for client id (%q) with name %q", command, conn.Id(), username)
 			result, err := h.CommandHandler.ExecuteCommand(cmdSegments[0], cmdArgs, c, h.clientHandler, h.PlaybackHandler, h.StreamHandler)
 			if err != nil {
 				log.Printf("ERR SOCKET CLIENT unable to execute command with id %q: %v", command, err)
@@ -131,15 +131,15 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		// 	log.Printf("SOCKET CLIENT WARN ")
 		// }
 
-		res := client.ResponseFromClientData(data.Data)
+		res := client.ResponseFromClientData(*data)
 		c.BroadcastAll("chatmessage", &res)
 
-		fmt.Printf("INFO SOCKET CLIENT chatmessage received %v\n", data)
+		fmt.Printf("INF SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
 	// this event is received when a client is requesting the current queue state
-	conn.On("request_queuesync", func(data *connection.Message) {
-		log.Printf("INFO SOCKET CLIENT client with id %q requested a queue-sync", conn.Id())
+	conn.On("request_queuesync", func(data *connection.MessageData) {
+		log.Printf("INF SOCKET CLIENT client with id %q requested a queue-sync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
@@ -174,8 +174,8 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting current stream state information
-	conn.On("request_streamsync", func(data *connection.Message) {
-		log.Printf("INFO SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
+	conn.On("request_streamsync", func(data *connection.MessageData) {
+		log.Printf("INF SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
@@ -190,14 +190,21 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		c.BroadcastTo("streamsync", &client.Response{
-			Id:    c.GetId(),
-			Extra: sPlayback.GetStatus(),
-		})
+		res := &client.Response{
+			Id: c.GetId(),
+		}
+
+		err = util.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to serialize playback status: %v", err)
+			return
+		}
+
+		c.BroadcastTo("streamsync", res)
 	})
 
 	// this event is received when a client is requesting to update stream state information in the server
-	conn.On("streamdata", func(data *connection.Message) {
+	conn.On("streamdata", func(data *connection.MessageData) {
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
@@ -223,12 +230,12 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		jsonData, err := json.Marshal(data.Data)
+		jsonData, err := data.Serialize()
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to convert received data map into json string: %v", err)
 		}
 
-		log.Printf("INFO SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
+		log.Printf("INF SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
 		err = s.SetInfo(jsonData)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT error updating stream data: %v", err)
@@ -271,15 +278,15 @@ func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]int
 // stream.Stream, a "streamload" event is sent to the client with the current stream.Stream information.
 // This method is not concurrency-safe.
 func (h *Handler) RegisterClient(conn connection.Connection) {
-	log.Printf("INFO SOCKET CLIENT registering client with id %q\n", conn.Id())
+	log.Printf("INF SOCKET CLIENT registering client with id %q\n", conn.Id())
 
 	roomName, err := util.GetRoomNameFromRequest(conn.Request())
 	if err != nil {
-		log.Printf("WARN SOCKET CLIENT websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
+		log.Printf("WRN SOCKET CLIENT websocket connection initiated outside of a valid room. Assigning default lobby room %q.", ROOM_DEFAULT_LOBBY)
 		roomName = ROOM_DEFAULT_LOBBY
 	}
 
-	log.Printf("INFO SOCKET CLIENT assigning client to room with name %q", roomName)
+	log.Printf("INF SOCKET CLIENT assigning client to room with name %q", roomName)
 
 	c := h.clientHandler.CreateClient(conn)
 	c.JoinRoom(roomName)
@@ -290,7 +297,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 	if !exists {
-		log.Printf("INFO SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
+		log.Printf("INF SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", roomName)
 		sPlayback = h.PlaybackHandler.NewStreamPlayback(roomName)
 		sPlayback.OnTick(func(currentTime int) {
 			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
@@ -308,26 +315,41 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 						queue := currPlayback.GetQueue()
 						nextStream, err := queue.Pop()
 						if err == nil {
-							log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
+							log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
 
 							currPlayback.SetStream(nextStream)
 							currPlayback.Reset()
-							c.BroadcastAll("streamload", &client.Response{
-								Id:    c.GetId(),
-								From:  "system",
-								Extra: nextStream.GetInfo(),
-							})
+
+							res := &client.Response{
+								Id:   c.GetId(),
+								From: "system",
+							}
+
+							err = util.SerializeIntoResponse(nextStream.Codec(), &res.Extra)
+							if err != nil {
+								log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize nextStream codec: %v", err)
+								return
+							}
+
+							c.BroadcastAll("streamload", res)
 						} else {
-							log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
+							log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream and no queue items. Stopping stream...")
 							currPlayback.Stop()
 						}
 
 						// emit updated playback state to client if stream has ended
-						log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
-						c.BroadcastAll("streamsync", &client.Response{
-							Id:    c.GetId(),
-							Extra: currPlayback.GetStatus(),
-						})
+						log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
+						res := &client.Response{
+							Id: c.GetId(),
+						}
+
+						err = util.SerializeIntoResponse(currPlayback.GetStatus(), &res.Extra)
+						if err != nil {
+							log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize playback status: %v", err)
+							return
+						}
+
+						c.BroadcastAll("streamsync", res)
 					}
 				}
 			}
@@ -338,25 +360,40 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 				return
 			}
 
-			log.Printf("INFO CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
-			c.BroadcastAll("streamsync", &client.Response{
-				Id:    c.GetId(),
-				Extra: currPlayback.GetStatus(),
-			})
+			log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
+
+			res := &client.Response{
+				Id: c.GetId(),
+			}
+
+			err = util.SerializeIntoResponse(currPlayback.GetStatus(), &res.Extra)
+			if err != nil {
+				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize playback status: %v", err)
+				return
+			}
+
+			c.BroadcastAll("streamsync", res)
 		})
 
 		return
 	}
 
-	log.Printf("INFO SOCKET CLIENT found StreamPlayback for room with name %q", roomName)
+	log.Printf("INF SOCKET CLIENT found StreamPlayback for room with name %q", roomName)
 
 	pStream, exists := sPlayback.GetStream()
 	if exists {
-		log.Printf("INFO SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), roomName)
-		c.BroadcastTo("streamload", &client.Response{
-			Id:    c.GetId(),
-			Extra: pStream.GetInfo(),
-		})
+		log.Printf("INF SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), roomName)
+		res := &client.Response{
+			Id: c.GetId(),
+		}
+
+		err = util.SerializeIntoResponse(pStream.Codec(), &res.Extra)
+		if err != nil {
+			log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize playback status: %v", err)
+			return
+		}
+
+		c.BroadcastTo("streamload", res)
 	}
 }
 

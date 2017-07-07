@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"encoding/json"
 	"log"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
@@ -27,7 +28,7 @@ func (p *StreamPlayback) UpdateStartedBy(c *client.Client) {
 		return
 	}
 
-	log.Printf("SOCKET CLIENT PLAYBACK attempted to update `startedBy` information, but the current client with id %q has no registered username.", c.GetId())
+	log.Printf("WRN SOCKET CLIENT PLAYBACK attempted to update `startedBy` information, but the current client with id %q has no registered username.", c.GetId())
 }
 
 // RefreshInfoFromClient receives a client and updates altered
@@ -118,7 +119,7 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 // and retrieves a corresponding stream.Stream, or creates a new one.
 func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
-		log.Printf("INFO PLAYBACK found existing stream object with url %q, retrieving...", url)
+		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		return s, nil
 	}
 
@@ -141,7 +142,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 		}
 	})
 
-	log.Printf("INFO PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
+	log.Printf("INF PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())
 	return s, nil
 }
 
@@ -150,9 +151,29 @@ func (p *StreamPlayback) GetQueueStatus() api.ApiCodec {
 	return p.queue.Status()
 }
 
+// StreamPlaybackStatus is a serializable schema representing a summary of information
+// about the current state of the StreamPlayback.
+// Implements api.ApiCodec.
+type StreamPlaybackStatus struct {
+	QueueLength    int          `json:"queueLength"`
+	StartedBy      string       `json:"startedBy"`
+	StreamUrl      string       `json:"streamUrl"`
+	StreamDuration float64      `json:"streamDuration"`
+	TimerStatus    api.ApiCodec `json:"playback"`
+}
+
+func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
 // Returns a map compatible with json types
 // detailing the current playback status
-func (p *StreamPlayback) GetStatus() map[string]interface{} {
+func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	streamUrl := ""
 	streamDuration := 0.0
 	s, exists := p.GetStream()
@@ -161,15 +182,12 @@ func (p *StreamPlayback) GetStatus() map[string]interface{} {
 		streamDuration = s.GetDuration()
 	}
 
-	return map[string]interface{}{
-		"queueLength":    p.queue.Length(),
-		"streamUrl":      streamUrl,
-		"streamDuration": streamDuration,
-		"timer":          p.GetTime(),
-		"isPlaying":      p.timer.GetStatus() == TIMER_PLAY,
-		"isStopped":      p.timer.GetStatus() == TIMER_STOP,
-		"isPaused":       p.timer.GetStatus() == TIMER_PAUSE,
-		"startedBy":      p.startedBy,
+	return &StreamPlaybackStatus{
+		QueueLength:    p.queue.Length(),
+		StartedBy:      p.startedBy,
+		StreamUrl:      streamUrl,
+		StreamDuration: streamDuration,
+		TimerStatus:    p.timer.Status(),
 	}
 }
 

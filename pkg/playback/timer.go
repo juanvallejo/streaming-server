@@ -1,9 +1,12 @@
 package playback
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
+
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 )
 
 const (
@@ -19,7 +22,7 @@ type TimerCallback func(int)
 // Timer keeps track of playback time
 type Timer struct {
 	time     int
-	status   int
+	state    int
 	callback TimerCallback
 	timeChan chan int
 }
@@ -29,12 +32,12 @@ func (t *Timer) Play() error {
 		panic("attempt to start a nil timer channel")
 	}
 
-	if t.status == TIMER_PLAY {
+	if t.state == TIMER_PLAY {
 		log.Printf("STREAM PLAYBACK TIMER attempt to play an already playing timer, ignoring...")
 		return nil
 	}
 
-	t.status = TIMER_PLAY
+	t.state = TIMER_PLAY
 	go Increment(t, t.timeChan)
 	return nil
 }
@@ -45,11 +48,11 @@ func (t *Timer) Stop() error {
 	}
 
 	t.time = 0
-	if t.status != TIMER_PLAY {
+	if t.state != TIMER_PLAY {
 		return nil
 	}
 
-	t.status = TIMER_STOP
+	t.state = TIMER_STOP
 	t.timeChan <- TIMER_STOP
 	return nil
 }
@@ -59,11 +62,11 @@ func (t *Timer) Pause() error {
 		panic("attempt to pause a nil timer channel")
 	}
 
-	if t.status != TIMER_PLAY {
+	if t.state != TIMER_PLAY {
 		return nil
 	}
 
-	t.status = TIMER_PAUSE
+	t.state = TIMER_PAUSE
 	t.timeChan <- TIMER_PAUSE
 	return nil
 }
@@ -85,8 +88,35 @@ func (t *Timer) GetTime() int {
 	return t.time
 }
 
-func (t *Timer) GetStatus() int {
-	return t.status
+func (t *Timer) State() int {
+	return t.state
+}
+
+// TimerStatus is a serializable schema representing a summary of
+// the current state of the Timer.
+type TimerStatus struct {
+	IsPlaying bool `json:"isPlaying"`
+	IsPaused  bool `json:"isPaused"`
+	IsStopped bool `json:"isStopped"`
+	Time      int  `json:"time"`
+}
+
+func (s *TimerStatus) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
+func (t *Timer) Status() api.ApiCodec {
+	return &TimerStatus{
+		IsPlaying: t.state == TIMER_PLAY,
+		IsStopped: t.state == TIMER_STOP,
+		IsPaused:  t.state == TIMER_PAUSE,
+		Time:      t.time,
+	}
 }
 
 // Increment is a convenience function for incrementing
@@ -122,7 +152,7 @@ func Increment(timer *Timer, c chan int) {
 
 func NewTimer() *Timer {
 	return &Timer{
-		status:   TIMER_STOP,
+		state:    TIMER_STOP,
 		timeChan: make(chan int, MAX_TIMER_CHAN_BUFFER),
 	}
 }

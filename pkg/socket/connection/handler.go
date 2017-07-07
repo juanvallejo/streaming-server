@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -78,10 +77,7 @@ func HandleConnection(handler Handler, conn Connection) {
 		}
 
 		if mType == websocket.CloseMessage || mType == websocket.CloseGoingAway || connClosed {
-			conn.Emit("disconnection", &Message{
-				Event: "disconnection",
-				Data:  make(map[string]interface{}),
-			})
+			conn.Emit("disconnection", &MessageData{})
 			handler.DeleteConnection(conn)
 			break
 		}
@@ -94,10 +90,10 @@ func HandleConnection(handler Handler, conn Connection) {
 				continue
 			}
 
-			conn.Emit(message.Event, &message)
+			conn.Emit(message.Event, message.Data)
 			continue
 		}
 
-		log.Printf("WARN WS HANDLE received non-text message from the client: %v", data)
+		log.Printf("WRN WS HANDLE received non-text message from the client: %v", data)
 	}
 }

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/validation"
@@ -24,7 +26,7 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 
 	prevName, hasPrevName := c.GetUsername()
 
-	log.Printf("SOCKET CLIENT INFO client with id %q requested a username update (%q -> %q)", c.GetId(), prevName, username)
+	log.Printf("INF SOCKET CLIENT client with id %q requested a username update (%q -> %q)", c.GetId(), prevName, username)
 
 	if hasPrevName && prevName == username {
 		return fmt.Errorf("error: you already have that username")
@@ -46,11 +48,11 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 			oldName = prevName
 		}
 
-		log.Printf("SOCKET CLIENT ERR failed to update username (%q -> %q) for client with id %q", oldName, username, c.GetId())
+		log.Printf("ERR SOCKET CLIENT failed to update username (%q -> %q) for client with id %q", oldName, username, c.GetId())
 		return err
 	}
 
-	log.Printf("SOCKET CLIENT sending \"updateusername\" event to client with id %q (%s)\n", c.GetId(), username)
+	log.Printf("INF SOCKET CLIENT sending \"updateusername\" event to client with id %q (%s)\n", c.GetId(), username)
 	c.BroadcastTo("updateusername", &client.Response{
 		From: username,
 	})
@@ -91,4 +93,15 @@ func GetCurrentDirectory() string {
 	}
 
 	return dir
+}
+
+// serializeIntoResponse receives an api.ApiCodec and
+// serializes it into a given structure pointer.
+func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
+	b, err := codec.Serialize()
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(b, dest)
 }

@@ -118,7 +118,7 @@ func (q *Queue) Length() int {
 	return len(q.items)
 }
 
-// QueueStatus is a schema representing the top-level state of the queue.
+// QueueStatus is a serializable schema representing the top-level state of the queue.
 type QueueStatus struct {
 	// Streams is a slice containing the first item in each queue-item stack
 	Items []stream.Stream `json:"items"`

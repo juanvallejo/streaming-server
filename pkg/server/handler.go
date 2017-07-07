@@ -43,7 +43,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("WARN HTTP received websocket request but no websocket handler defined. Ignoring...")
+		log.Printf("WRN HTTP received websocket request but no websocket handler defined. Ignoring...")
 	}
 
 	// handle urls for static files
@@ -80,7 +80,7 @@ func (h *RequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // If an error occurs while handling a path, a boolean true is
 // returned, as the path exists, and the error is returned.
 func (h *RequestHandler) HandlePath(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("INFO HTTP PATH handling path with url %q", r.URL.String())
+	log.Printf("INF HTTP PATH handling path with url %q", r.URL.String())
 
 	p, exists := h.paths[url]
 	if !exists {
@@ -98,22 +98,22 @@ func (h *RequestHandler) HandlePath(url string, w http.ResponseWriter, r *http.R
 
 func (h *RequestHandler) HandleFile(url string, w http.ResponseWriter, r *http.Request) {
 	if len(url) == 0 {
-		log.Printf("WARN HTTP Static file requested, but request was empty\n")
+		log.Printf("WRN HTTP Static file requested, but request was empty\n")
 		path.HandleNotFound(url, w, r)
 		return
 	}
 
-	log.Printf("INFO HTTP PATH Attempting to serve static file %q\n", path.FilePathFromUrl(url))
+	log.Printf("INF HTTP PATH Attempting to serve static file %q\n", path.FilePathFromUrl(url))
 	http.ServeFile(w, r, path.FilePathFromUrl(url))
 }
 
 func (h *RequestHandler) HandleRoom(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("INFO HTTP PATH handler for path with url %q matched room name pattern", url)
+	log.Printf("INF HTTP PATH handler for path with url %q matched room name pattern", url)
 	h.HandlePath(path.RoomRootUrl, w, r)
 }
 
 func (h *RequestHandler) HandleStream(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("INFO HTTP PATH handler for path with url %q matched stream name pattern", url)
+	log.Printf("INF HTTP PATH handler for path with url %q matched stream name pattern", url)
 	h.HandlePath(path.StreamRootUrl, w, r)
 }
 

@@ -56,7 +56,7 @@ func (s *Server) Emit(eventName string, conn connection.Connection) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origin := getClientOrigin(r)
-	log.Printf("SOCKET handling socket request for ref %q\n", origin)
+	log.Printf("INF SOCKET handling socket request for ref %q\n", origin)
 
 	// allow specific request origin access with credentials
 	w.Header().Set("Access-Control-Allow-Origin", origin)

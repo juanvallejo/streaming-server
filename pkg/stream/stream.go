@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	pathutil "github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
 )
@@ -40,9 +41,9 @@ type Stream interface {
 	GetKind() string
 	// GetDuration returns the stream's saved duration
 	GetDuration() float64
-	// GetInfo returns a map -> interface{} of json friendly data
-	// describing the current stream object
-	GetInfo() map[string]interface{}
+	// Codec returns a serializable representation of the
+	// current stream
+	Codec() api.ApiCodec
 	// FetchMetadata calls the necessary apis / libraries needed to load
 	// extra stream information in a separate goroutine. This asynchronous
 	// method calls a passed callback function with retrieved metadata info.
@@ -99,19 +100,8 @@ func (s *StreamSchema) SetInfo(data []byte) error {
 	return json.Unmarshal(data, s)
 }
 
-func (s *StreamSchema) GetInfo() map[string]interface{} {
-	m := make(map[string]interface{})
-	b, err := s.Serialize()
-	if err != nil {
-		return m
-	}
-
-	err = json.Unmarshal(b, &m)
-	if err != nil {
-		return m
-	}
-
-	return m
+func (s *StreamSchema) Codec() api.ApiCodec {
+	return s
 }
 
 // YouTubeStream implements Stream

@@ -5,11 +5,10 @@ import (
 	"log"
 	"strconv"
 
-	"encoding/json"
-
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
+	sockutil "github.com/juanvallejo/streaming-server/pkg/socket/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -55,13 +54,12 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 	switch args[0] {
 	case "info":
-		// return stream playback info in the "Extra" field of a client.Response
-		output := "Stream playback info:<br />"
-		for k, v := range sPlayback.GetStatus() {
-			output += fmt.Sprintf("<br /><span class='text-hl-name'>%s</span>: %v", k, v)
+		status, err := sPlayback.GetStatus().Serialize()
+		if err != nil {
+			return "", err
 		}
 
-		return output, nil
+		return string(status), nil
 	case "play":
 		// if a stream has not been set, fallthrough - allow "play"
 		// to behave like "skip". If a stream has been set, allow
@@ -72,11 +70,18 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			if err != nil {
 				return "", err
 			}
-			user.BroadcastAll("streamsync", &client.Response{
-				Id:    user.GetId(),
-				From:  username,
-				Extra: sPlayback.GetStatus(),
-			})
+
+			res := &client.Response{
+				Id:   user.GetId(),
+				From: username,
+			}
+
+			err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+			if err != nil {
+				return "", err
+			}
+
+			user.BroadcastAll("streamsync", res)
 			return "playing stream...", nil
 		}
 
@@ -98,11 +103,17 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			sPlayback.Play()
 		}
 
-		user.BroadcastAll("streamload", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: nextStream.GetInfo(),
-		})
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		err = sockutil.SerializeIntoResponse(nextStream.Codec(), &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("streamload", res)
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, nextStream.GetStreamURL()))
 		return fmt.Sprintf("attempting to load the next item in the queue: %q", nextStream.GetStreamURL()), nil
 	case "load":
@@ -123,11 +134,17 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		sPlayback.Reset()
 		sPlayback.UpdateStartedBy(user)
 
-		user.BroadcastAll("streamload", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: s.GetInfo(),
-		})
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		err = sockutil.SerializeIntoResponse(s.Codec(), &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("streamload", res)
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, s.GetKind(), url))
 
 		return fmt.Sprintf("attempting to load %q", args[1]), nil
@@ -148,13 +165,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			From: username,
 		}
 
-		qStatus := sPlayback.GetQueueStatus()
-		b, err := qStatus.Serialize()
-		if err != nil {
-			return "", err
-		}
-
-		err = json.Unmarshal(b, &res.Extra)
+		err = sockutil.SerializeIntoResponse(sPlayback.GetQueueStatus(), &res.Extra)
 		if err != nil {
 			return "", err
 		}
@@ -174,19 +185,33 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 	switch args[0] {
 	case "pause":
 		sPlayback.Pause()
-		user.BroadcastAll("streamsync", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: sPlayback.GetStatus(),
-		})
+
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		err := sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("streamsync", res)
 		return "pausing stream...", nil
 	case "stop":
 		sPlayback.Stop()
-		user.BroadcastAll("streamsync", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: sPlayback.GetStatus(),
-		})
+
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		err := sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("streamsync", res)
 		return "stopping stream...", nil
 	case "seek":
 		if len(args) < 2 || len(args[1]) == 0 {
@@ -220,11 +245,17 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			sPlayback.SetTime(newTime)
 		}
 
-		user.BroadcastAll("streamsync", &client.Response{
-			Id:    user.GetId(),
-			From:  username,
-			Extra: sPlayback.GetStatus(),
-		})
+		res := &client.Response{
+			Id:   user.GetId(),
+			From: username,
+		}
+
+		err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+		if err != nil {
+			return "", err
+		}
+
+		user.BroadcastAll("streamsync", res)
 
 		return fmt.Sprintf("setting the stream playback to %vs for all clients.", newTime), nil
 	}

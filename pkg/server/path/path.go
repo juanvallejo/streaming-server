@@ -58,7 +58,7 @@ func HandleServerError(url string, w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleNotFound(url string, w http.ResponseWriter, r *http.Request) {
-	log.Printf("WARN HTTP PATH handler for path with url %q was not found", url)
+	log.Printf("WRN HTTP PATH handler for path with url %q was not found", url)
 	w.WriteHeader(http.StatusNotFound)
 	io.WriteString(w, "404: page not found.")
 }

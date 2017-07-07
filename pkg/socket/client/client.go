@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -23,6 +24,8 @@ type Client struct {
 	room       string
 }
 
+// Response is a serializable schema representing
+// a response to be sent to the client
 type Response struct {
 	Id         string                 `json:"id"`
 	IsSystem   bool                   `json:"system"`
@@ -30,6 +33,15 @@ type Response struct {
 	Message    string                 `json:"message"`
 	ErrMessage string                 `json:"error"`
 	Extra      map[string]interface{} `json:"extra"`
+}
+
+func (r *Response) Serialize() ([]byte, error) {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
 }
 
 // New receives a socket.io client connection and creates
@@ -95,39 +107,28 @@ func (c *Client) BroadcastErrorTo(err error) {
 	})
 }
 
-func (c *Client) BroadcastAll(evt string, data *Response) {
+func (c *Client) BroadcastAll(evt string, data api.ApiCodec) {
 	room, inRoom := c.GetRoom()
 	if !inRoom {
 		panic("broadcast attempt from client without room")
 	}
 
-	m := getBroadcastMessage(c, evt, data)
+	m := getBroadcastMessage(evt, data)
 	c.connection.Broadcast(room, evt, m)
 }
 
-func (c *Client) BroadcastTo(evt string, data *Response) {
-	message := &connection.Message{
-		Event: evt,
-		Data: map[string]interface{}{
-			"response": data,
-		},
-	}
-
-	m, err := json.Marshal(message)
-	if err != nil {
-		panic(err)
-	}
-
+func (c *Client) BroadcastTo(evt string, data api.ApiCodec) {
+	m := getBroadcastMessage(evt, data)
 	c.connection.Send(m)
 }
 
-func (c *Client) BroadcastFrom(evt string, data *Response) {
+func (c *Client) BroadcastFrom(evt string, data api.ApiCodec) {
 	room, inRoom := c.GetRoom()
 	if !inRoom {
 		panic("broadcast attempt from client without room")
 	}
 
-	m := getBroadcastMessage(c, evt, data)
+	m := getBroadcastMessage(evt, data)
 	c.connection.BroadcastFrom(room, evt, m)
 }
 
@@ -249,12 +250,26 @@ func (c *Client) GetConnection() connection.Connection {
 	return c.connection
 }
 
-func getBroadcastMessage(c *Client, evt string, data *Response) []byte {
+func getBroadcastMessage(evt string, codec api.ApiCodec) []byte {
 	message := &connection.Message{
 		Event: evt,
-		Data: map[string]interface{}{
-			"response": data,
-		},
+	}
+
+	switch data := codec.(type) {
+	case *connection.MessageData:
+		message.Data = data
+	case *Response:
+		b, err := codec.Serialize()
+		if err != nil {
+			panic("unable to serialize message *Response from codec")
+		}
+
+		err = json.Unmarshal(b, &message.Data)
+		if err != nil {
+			panic("unable to de-serialize *Response from codec")
+		}
+	default:
+		panic("unknown broadcast message data type received from codec")
 	}
 
 	m, err := json.Marshal(message)

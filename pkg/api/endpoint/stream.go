@@ -1,14 +1,13 @@
 package endpoint
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
-
-	"fmt"
-
 	"os"
+	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/types"
 	paths "github.com/juanvallejo/streaming-server/pkg/server/path"
@@ -20,6 +19,21 @@ const STREAM_ENDPOINT_PREFIX = "/stream"
 // StreamEndpoint implements ApiEndpoint
 type StreamEndpoint struct {
 	*ApiEndpointSchema
+}
+
+// StreamList composes a slice of Stream
+type StreamList struct {
+	Kind  string          `json:"kind"`
+	Items []stream.Stream `json:"items"`
+}
+
+func (s *StreamList) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
@@ -40,7 +54,7 @@ func (e *StreamEndpoint) Handle(segments []string, w http.ResponseWriter, r *htt
 		return
 	}
 
-	sList := types.StreamList{
+	sList := StreamList{
 		Kind:  types.API_TYPE_STREAM_LIST,
 		Items: []stream.Stream{},
 	}

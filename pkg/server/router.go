@@ -14,7 +14,7 @@ type RequestRouter struct {
 // the mapped value (if one exists), or the url string
 func (r *RequestRouter) Route(url string) string {
 	if routed, exists := r.routes[url]; exists {
-		log.Printf("INFO HTTP ROUTER routing request (%s -> %s)", url, routed)
+		log.Printf("INF HTTP ROUTER routing request (%s -> %s)", url, routed)
 		return routed
 	}
 

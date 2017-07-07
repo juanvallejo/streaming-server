@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,12 +9,32 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Message struct {
-	Event string                 `json:"event"`
-	Data  map[string]interface{} `json:"data"`
+type MessageData map[string]interface{}
+
+func (d *MessageData) Get(key string) (interface{}, bool) {
+	val := (*d)[key]
+	if val == nil {
+		return nil, false
+	}
+
+	return val, true
 }
 
-type SocketEventCallback func(*Message)
+func (d *MessageData) Serialize() ([]byte, error) {
+	b, err := json.Marshal(d)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
+type Message struct {
+	Event string       `json:"event"`
+	Data  *MessageData `json:"data"`
+}
+
+type SocketEventCallback func(*MessageData)
 
 type Connection interface {
 	// Broadcast calls the namespace handler Broadcast method
@@ -24,7 +45,7 @@ type Connection interface {
 	BroadcastFrom(string, string, []byte)
 	// Emit iterates through all stored SocketEventCallback functions and calls
 	// them with the given Message argument.
-	Emit(string, *Message)
+	Emit(string, *MessageData)
 	// Id retrieves the connection's uuid
 	Id() string
 	// Join assigns the connection to a namespace
@@ -64,7 +85,7 @@ func (c *SocketConn) On(eventName string, callback SocketEventCallback) {
 	c.callbacks[eventName] = append(c.callbacks[eventName], callback)
 }
 
-func (c *SocketConn) Emit(eventName string, data *Message) {
+func (c *SocketConn) Emit(eventName string, data *MessageData) {
 	ec, exists := c.callbacks[eventName]
 	if !exists {
 		return

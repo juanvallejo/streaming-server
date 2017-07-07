@@ -46,7 +46,7 @@ func NewServer(requestHandler *RequestHandler, opts *ServerOptions) *ServerOptio
 
 // Serve starts an http server using specified settings.
 func (s *ServerOptions) Serve() {
-	log.Printf("INFO HTTP Serving on %s\n", s.getAddr())
+	log.Printf("INF HTTP Serving on %s\n", s.getAddr())
 
 	err := s.Server.ListenAndServe()
 	if err != nil {

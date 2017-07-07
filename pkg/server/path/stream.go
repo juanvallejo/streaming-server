@@ -76,7 +76,7 @@ func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Re
 	}
 	defer file.Close()
 
-	log.Printf("INFO HTTP PATH serving requested file (%s) with a byte-range size of %v bytes", fileStat.Name(), byteRangeSize)
+	log.Printf("INF HTTP PATH serving requested file (%s) with a byte-range size of %v bytes", fileStat.Name(), byteRangeSize)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
