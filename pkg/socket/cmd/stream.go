@@ -5,6 +5,8 @@ import (
 	"log"
 	"strconv"
 
+	"encoding/json"
+
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
@@ -59,7 +61,14 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
-		return string(status), nil
+		m := make(map[string]interface{})
+		err = json.Unmarshal(status, &m)
+		if err != nil {
+			return "", err
+		}
+
+		output := "Stream info:<br />" + unpackMap(m)
+		return output, nil
 	case "play":
 		// if a stream has not been set, fallthrough - allow "play"
 		// to behave like "skip". If a stream has been set, allow
@@ -283,4 +292,18 @@ func getStreamUrlFromArgs(args []string) (string, error) {
 	}
 
 	return args[1], nil
+}
+
+// unpackMap receives a map of [string]interface{} and
+// unpacks all of its nested contents into a flat string
+func unpackMap(m map[string]interface{}) string {
+	output := ""
+	for k, v := range m {
+		if newMap, ok := v.(map[string]interface{}); ok {
+			output += unpackMap(newMap)
+			continue
+		}
+		output += fmt.Sprintf("<br /><span class='text-hl-name'>%s</span>: %v", k, v)
+	}
+	return output
 }
