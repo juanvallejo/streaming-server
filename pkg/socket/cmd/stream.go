@@ -20,8 +20,8 @@ type StreamCmd struct {
 
 const (
 	STREAM_NAME        = "stream"
-	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|queue|seek|skip)'"
-	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|seek &lt;seconds&gt;|set &lt;url&gt;|queue &lt;url&gt;)"
+	STREAM_DESCRIPTION = "controls stream playback (info|pause|play|stop|set|seek|skip)'"
+	STREAM_USAGE       = "Usage: /" + STREAM_NAME + " (info|pause|play|stop|skip|seek &lt;seconds&gt;|set &lt;url&gt;)"
 )
 
 var (
@@ -67,7 +67,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
-		output := "Stream info:<br />" + unpackMap(m)
+		output := "Stream info:<br />" + unpackMap(m, "")
 		return output, nil
 	case "play":
 		// if a stream has not been set, fallthrough - allow "play"
@@ -157,32 +157,6 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load a %s stream: %q", username, s.GetKind(), url))
 
 		return fmt.Sprintf("attempting to load %q", args[1]), nil
-	case "queue":
-		// add a stream to the end of the queue
-		url, err := getStreamUrlFromArgs(args)
-		if err != nil {
-			return "", err
-		}
-
-		err = sPlayback.QueueStreamFromUrl(url, user, streamHandler)
-		if err != nil {
-			return "", err
-		}
-
-		res := &client.Response{
-			Id:   user.GetId(),
-			From: username,
-		}
-
-		err = sockutil.SerializeIntoResponse(sPlayback.GetQueueStatus(), &res.Extra)
-		if err != nil {
-			return "", err
-		}
-
-		user.BroadcastAll("queuesync", res)
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, url))
-		return fmt.Sprintf("successfully queued %q", url), nil
-
 	}
 
 	// require stream data to have been loaded before proceeding with cases below
@@ -296,14 +270,35 @@ func getStreamUrlFromArgs(args []string) (string, error) {
 
 // unpackMap receives a map of [string]interface{} and
 // unpacks all of its nested contents into a flat string
-func unpackMap(m map[string]interface{}) string {
+func unpackMap(m map[string]interface{}, listItemLineBreak string) string {
 	output := ""
 	for k, v := range m {
 		if newMap, ok := v.(map[string]interface{}); ok {
-			output += unpackMap(newMap)
+			output += unpackMap(newMap, listItemLineBreak)
+			continue
+		} else if newList, ok := v.([]interface{}); ok {
+			output += unpackList(newList, listItemLineBreak)
 			continue
 		}
 		output += fmt.Sprintf("<br /><span class='text-hl-name'>%s</span>: %v", k, v)
 	}
+	return output
+}
+
+// unpackList receives a list of empty interface and
+// unpacks all of its items into a flat string
+func unpackList(l []interface{}, listItemLineBreak string) string {
+	output := ""
+	for _, v := range l {
+		if newMap, ok := v.(map[string]interface{}); ok {
+			output += fmt.Sprintf("%v%s", listItemLineBreak, unpackMap(newMap, listItemLineBreak))
+			continue
+		} else if newList, ok := v.([]interface{}); ok {
+			output += unpackList(newList, listItemLineBreak)
+			continue
+		}
+		output += fmt.Sprintf("<br />%v", v)
+	}
+
 	return output
 }

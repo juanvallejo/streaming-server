@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	apiconfig "github.com/juanvallejo/streaming-server/pkg/api/config"
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	pathutil "github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/util"
@@ -23,8 +24,6 @@ const (
 	STREAM_TYPE_TWITCH  = "twitch"
 
 	DEFAULT_LIB_AV_BIN = "ffprobe" // used to extract local media file metadata
-
-	YT_API_KEY = "AIzaSyCF-AsZFqN_ic0QpqB18Et1cFjAMhpxz8M"
 )
 
 type StreamMetadataCallback func(Stream, []byte, error)
@@ -285,7 +284,7 @@ func NewYouTubeStream(url string) Stream {
 			Kind:      STREAM_TYPE_YOUTUBE,
 		},
 
-		apiKey: YT_API_KEY,
+		apiKey: apiconfig.YT_API_KEY,
 	}
 }
 

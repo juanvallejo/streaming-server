@@ -78,7 +78,11 @@ func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.
 	endpoint.HandleEndpointNotFound(w)
 }
 
-func (h *ApiHandler) registerEndpoint(e endpoint.ApiEndpoint) {
+func (h *ApiHandler) RegisterEndpoint(e endpoint.ApiEndpoint) {
+	if e, exists := h.endpoints[ApiPrefix+e.GetPath()]; exists {
+		log.Panic("ERR API attempt to register existing endpoint: " + e.GetPath())
+	}
+
 	h.endpoints[ApiPrefix+e.GetPath()] = e
 
 }
@@ -92,8 +96,6 @@ func NewHandler() Handler {
 }
 
 func (h *ApiHandler) registerDefaultEndpoints() {
-	h.registerEndpoint(endpoint.NewStreamEndpoint())
-
-	//registeredEndpoints["/api/users"] = handleApiUsers
-	//registeredEndpoints["/api/movies"] = handleApiMovies
+	h.RegisterEndpoint(endpoint.NewStreamEndpoint())
+	h.RegisterEndpoint(endpoint.NewYoutubeEndpoint())
 }
