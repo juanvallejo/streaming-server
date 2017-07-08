@@ -28,6 +28,9 @@ type PlaybackQueue interface {
 	// Status returns a top-level serializable view of the queue
 	// in order, starting from QueueItem[round-robin-index]
 	Status() api.ApiCodec
+	// StackStatus returns a breath-level and depth-level serializable view
+	// of the queue. Requires a stack id to be passed
+	StackStatus(string) (api.ApiCodec, error)
 }
 
 // A queue item maps a unique id to a stack of stream.Streams
@@ -120,7 +123,7 @@ func (q *Queue) Length() int {
 
 // QueueStatus is a serializable schema representing the top-level state of the queue.
 type QueueStatus struct {
-	// Streams is a slice containing the first item in each queue-item stack
+	// Items is a slice containing the first item in each queue-item stack
 	Items []stream.Stream `json:"items"`
 }
 
@@ -145,6 +148,43 @@ func (q *Queue) Status() api.ApiCodec {
 	return &QueueStatus{
 		Items: items,
 	}
+}
+
+// StackStatus is a serializable schema representing a breath and depth state of the queue.
+type StackStatus struct {
+	// QueueItems is a slice containing the first item in each queue-item stack
+	QueueItems []stream.Stream `json:"queueItems"`
+	// StackItems is a slice containing all of the items in the specified stackId
+	StackItems []stream.Stream `json:"stackItems"`
+}
+
+func (s *StackStatus) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
+func (q *Queue) StackStatus(stackId string) (api.ApiCodec, error) {
+	stack, exists := q.itemsById[stackId]
+	if !exists {
+		return nil, fmt.Errorf("stack with id %q does not exist", stackId)
+	}
+
+	items := []stream.Stream{}
+	for _, i := range q.items {
+		items = append(items, i.streams[0])
+	}
+
+	// order items by current round-robin count
+	items = append(items[q.rrCount:], items[0:q.rrCount]...)
+
+	return &StackStatus{
+		QueueItems: items,
+		StackItems: stack.streams,
+	}, nil
 }
 
 func NewQueue() PlaybackQueue {

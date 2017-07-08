@@ -151,6 +151,12 @@ func (p *StreamPlayback) GetQueueStatus() api.ApiCodec {
 	return p.queue.Status()
 }
 
+// GetQueueStackStatus returns an ApiCodec describing the queue's current state of the queue
+// as well as the current state of the stack with the given stackId
+func (p *StreamPlayback) GetQueueStackStatus(stackId string) (api.ApiCodec, error) {
+	return p.queue.StackStatus(stackId)
+}
+
 // StreamPlaybackStatus is a serializable schema representing a summary of information
 // about the current state of the StreamPlayback.
 // Implements api.ApiCodec.
