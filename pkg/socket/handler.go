@@ -37,7 +37,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	log.Printf("INF SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
 
 	// TODO: remove room's StreamPlayback once last client has left
-	conn.On("disconnection", func(data *connection.MessageData) {
+	conn.On("disconnection", func(data connection.MessageDataCodec) {
 		log.Printf("INF DCONN SOCKET client with id %q has disconnected\n", conn.Id())
 
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
@@ -57,8 +57,14 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting a username update
-	conn.On("request_updateusername", func(data *connection.MessageData) {
-		rawUsername, ok := data.Get("user")
+	conn.On("request_updateusername", func(data connection.MessageDataCodec) {
+		messageData, ok := data.(*connection.MessageData)
+		if !ok {
+			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting *connection.MessageData", "request_chatmessage")
+			return
+		}
+
+		rawUsername, ok := messageData.Get("user")
 		if !ok {
 			log.Printf("ERR SOCKET CLIENT client %q sent malformed request to update username. Ignoring request.", conn.Id())
 			return
@@ -86,8 +92,14 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting to broadcast a chat message
-	conn.On("request_chatmessage", func(data *connection.MessageData) {
-		username, ok := data.Get("user")
+	conn.On("request_chatmessage", func(data connection.MessageDataCodec) {
+		messageData, ok := data.(*connection.MessageData)
+		if !ok {
+			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting *connection.MessageData", "request_chatmessage")
+			return
+		}
+
+		username, ok := messageData.Get("user")
 		if ok {
 			log.Printf("INF SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
 		}
@@ -98,7 +110,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		command, isCommand, err := h.ParseCommandMessage(c, *data)
+		command, isCommand, err := h.ParseCommandMessage(c, *messageData)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
@@ -131,14 +143,14 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		// 	log.Printf("SOCKET CLIENT WARN ")
 		// }
 
-		res := client.ResponseFromClientData(*data)
+		res := client.ResponseFromClientData(*messageData)
 		c.BroadcastAll("chatmessage", &res)
 
 		fmt.Printf("INF SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
 	// this event is received when a client is requesting the current queue state
-	conn.On("request_queuesync", func(data *connection.MessageData) {
+	conn.On("request_queuesync", func(data connection.MessageDataCodec) {
 		log.Printf("INF SOCKET CLIENT client with id %q requested a queue-sync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
@@ -174,7 +186,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting current stream state information
-	conn.On("request_streamsync", func(data *connection.MessageData) {
+	conn.On("request_streamsync", func(data connection.MessageDataCodec) {
 		log.Printf("INF SOCKET CLIENT client with id %q requested a streamsync", conn.Id())
 
 		c, err := h.clientHandler.GetClient(conn.Id())
@@ -204,7 +216,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 
 	// this event is received when a client is requesting to update stream state information in the server
-	conn.On("streamdata", func(data *connection.MessageData) {
+	conn.On("streamdata", func(data connection.MessageDataCodec) {
 		c, err := h.clientHandler.GetClient(conn.Id())
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)

@@ -84,6 +84,7 @@ func HandleConnection(handler Handler, conn Connection) {
 
 		if mType == websocket.TextMessage {
 			var message Message
+			message.Data = &MessageData{}
 			err := json.Unmarshal(data, &message)
 			if err != nil {
 				log.Printf("ERR WS HANDLE received non-json message: %v: %v", string(data), err)
