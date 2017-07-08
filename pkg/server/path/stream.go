@@ -41,11 +41,11 @@ func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Re
 	contentRange = strings.Replace(contentRange, "bytes=", "", -1)
 	positions := strings.Split(contentRange, "-")
 
-	startPos, err := strconv.ParseInt(positions[0], 10, 32)
+	startPos, err := strconv.ParseInt(positions[0], 10, 64)
 	if err != nil {
 		return err
 	}
-	endPos, err := strconv.ParseInt(positions[1], 10, 32)
+	endPos, err := strconv.ParseInt(positions[1], 10, 64)
 	if err != nil {
 		endPos = fileStat.Size() - 1
 	}

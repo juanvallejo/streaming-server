@@ -161,6 +161,7 @@ func (p *StreamPlayback) GetQueueStackStatus(stackId string) (api.ApiCodec, erro
 // about the current state of the StreamPlayback.
 // Implements api.ApiCodec.
 type StreamPlaybackStatus struct {
+	Kind           string       `json:"kind"`
 	QueueLength    int          `json:"queueLength"`
 	StartedBy      string       `json:"startedBy"`
 	StreamUrl      string       `json:"streamUrl"`
@@ -189,6 +190,7 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 
 	return &StreamPlaybackStatus{
+		Kind:           p.stream.GetKind(),
 		QueueLength:    p.queue.Length(),
 		StartedBy:      p.startedBy,
 		StreamUrl:      streamUrl,
