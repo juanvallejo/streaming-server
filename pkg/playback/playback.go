@@ -151,22 +151,14 @@ func (p *StreamPlayback) GetQueueStatus() api.ApiCodec {
 	return p.queue.Status()
 }
 
-// GetQueueStackStatus returns an ApiCodec describing the queue's current state of the queue
-// as well as the current state of the stack with the given stackId
-func (p *StreamPlayback) GetQueueStackStatus(stackId string) (api.ApiCodec, error) {
-	return p.queue.StackStatus(stackId)
-}
-
 // StreamPlaybackStatus is a serializable schema representing a summary of information
 // about the current state of the StreamPlayback.
 // Implements api.ApiCodec.
 type StreamPlaybackStatus struct {
-	Kind           string       `json:"kind"`
-	QueueLength    int          `json:"queueLength"`
-	StartedBy      string       `json:"startedBy"`
-	StreamUrl      string       `json:"streamUrl"`
-	StreamDuration float64      `json:"streamDuration"`
-	TimerStatus    api.ApiCodec `json:"playback"`
+	QueueLength int          `json:"queueLength"`
+	StartedBy   string       `json:"startedBy"`
+	Stream      api.ApiCodec `json:"stream"`
+	TimerStatus api.ApiCodec `json:"playback"`
 }
 
 func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
@@ -181,21 +173,18 @@ func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
 // Returns a map compatible with json types
 // detailing the current playback status
 func (p *StreamPlayback) GetStatus() api.ApiCodec {
-	streamUrl := ""
-	streamDuration := 0.0
+	var streamCodec api.ApiCodec
+
 	s, exists := p.GetStream()
 	if exists {
-		streamUrl = s.GetStreamURL()
-		streamDuration = s.GetDuration()
+		streamCodec = s.Codec()
 	}
 
 	return &StreamPlaybackStatus{
-		Kind:           p.stream.GetKind(),
-		QueueLength:    p.queue.Length(),
-		StartedBy:      p.startedBy,
-		StreamUrl:      streamUrl,
-		StreamDuration: streamDuration,
-		TimerStatus:    p.timer.Status(),
+		QueueLength: p.queue.Length(),
+		StartedBy:   p.startedBy,
+		TimerStatus: p.timer.Status(),
+		Stream:      streamCodec,
 	}
 }
 

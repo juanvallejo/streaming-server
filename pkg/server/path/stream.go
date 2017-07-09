@@ -43,7 +43,8 @@ func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Re
 
 	startPos, err := strconv.ParseInt(positions[0], 10, 64)
 	if err != nil {
-		return err
+		HandleInvalidRange(fmt.Sprintf("range value too large: %v", err), w, r)
+		return nil
 	}
 	endPos, err := strconv.ParseInt(positions[1], 10, 64)
 	if err != nil {

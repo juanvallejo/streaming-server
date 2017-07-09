@@ -171,8 +171,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			From: "system",
 		}
 
-		qStatus := sPlayback.GetQueueStatus()
-		b, err := qStatus.Serialize()
+		b, err := sPlayback.GetQueueStatus().Serialize()
 		if err != nil {
 			return
 		}
@@ -183,6 +182,41 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		c.BroadcastTo("queuesync", res)
+	})
+
+	// this event is received when a client is requesting the current queue state for a specific QueueItem stack
+	conn.On("request_stacksync", func(data connection.MessageDataCodec) {
+		log.Printf("INF SOCKET CLIENT client with id %q requested a queue-stack-sync", conn.Id())
+
+		c, err := h.clientHandler.GetClient(conn.Id())
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			return
+		}
+
+		sPlayback, err := h.getPlaybackFromClient(c)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT %v", err)
+			c.BroadcastErrorTo(err)
+			return
+		}
+
+		res := &client.Response{
+			Id:   c.GetId(),
+			From: "system",
+		}
+
+		b, err := sPlayback.GetQueue().StackStatus(c.GetId()).Serialize()
+		if err != nil {
+			return
+		}
+
+		err = json.Unmarshal(b, &res.Extra)
+		if err != nil {
+			return
+		}
+
+		c.BroadcastTo("stacksync", res)
 	})
 
 	// this event is received when a client is requesting current stream state information
@@ -337,7 +371,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 								From: "system",
 							}
 
-							err = util.SerializeIntoResponse(nextStream.Codec(), &res.Extra)
+							err = util.SerializeIntoResponse(currPlayback.GetStatus(), &res.Extra)
 							if err != nil {
 								log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize nextStream codec: %v", err)
 								return
@@ -399,7 +433,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 			Id: c.GetId(),
 		}
 
-		err = util.SerializeIntoResponse(pStream.Codec(), &res.Extra)
+		err = util.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
 		if err != nil {
 			log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT unable to serialize playback status: %v", err)
 			return

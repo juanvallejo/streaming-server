@@ -117,7 +117,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			From: username,
 		}
 
-		err = sockutil.SerializeIntoResponse(nextStream.Codec(), &res.Extra)
+		err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
 		if err != nil {
 			return "", err
 		}
@@ -148,7 +148,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			From: username,
 		}
 
-		err = sockutil.SerializeIntoResponse(s.Codec(), &res.Extra)
+		err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
 		if err != nil {
 			return "", err
 		}

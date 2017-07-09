@@ -19,7 +19,7 @@ type QueueCmd struct {
 const (
 	QUEUE_NAME        = "queue"
 	QUEUE_DESCRIPTION = "control the room queue"
-	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (add &lt;url&gt;|clear|list &lt;mine|room&gt;)"
+	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (add &lt;url&gt;|clear &lt;room|mine [url]&gt;|list &lt;mine|room&gt;)"
 )
 
 func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
@@ -57,17 +57,16 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		res := &client.Response{
-			Id:   user.GetId(),
-			From: username,
-		}
-
-		err = sockutil.SerializeIntoResponse(sPlayback.GetQueueStatus(), &res.Extra)
+		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
 		}
 
-		user.BroadcastAll("queuesync", res)
+		err = sendStackSyncEvent(user, sPlayback)
+		if err != nil {
+			return "", err
+		}
+
 		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, url))
 		return fmt.Sprintf("successfully queued %q", url), nil
 	case "list":
@@ -76,7 +75,24 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		if args[1] == "mine" || args[1] == "me" {
-			return "", fmt.Errorf("unimplemented")
+			status, err := sPlayback.GetQueue().StackStatus(user.GetId()).Serialize()
+			if err != nil {
+				return "", err
+			}
+
+			m := make(map[string]interface{})
+			err = json.Unmarshal(status, &m)
+			if err != nil {
+				return "", err
+			}
+
+			mUser, exists := m["items"]
+			if !exists {
+				return "", fmt.Errorf("malformed serialized queue-stack response")
+			}
+
+			output := "Your queue:<br />" + unpackList([]interface{}{mUser}, "<br />")
+			return output, nil
 		}
 
 		if args[1] == "room" || args[1] == "all" {
@@ -94,6 +110,63 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			output := "Queue status:<br />" + unpackMap(m, "<br />")
 			return output, nil
 		}
+	case "clear":
+		if len(args) < 2 {
+			return "", fmt.Errorf("%v", h.usage)
+		}
+
+		if len(args) < 3 {
+			// clear entire queue
+			if args[1] == "room" || args[1] == "all" {
+				sPlayback.GetQueue().Clear()
+				err := sendQueueSyncEvent(user, sPlayback)
+				if err != nil {
+					return "", err
+				}
+
+				err = sendStackSyncEvent(user, sPlayback)
+				if err != nil {
+					return "", err
+				}
+				return "clearing queue....", nil
+			}
+
+			// clear a single client's queue
+			if args[1] == "mine" || args[1] == "me" {
+				sPlayback.GetQueue().ClearStack(user.GetId())
+				err := sendQueueSyncEvent(user, sPlayback)
+				if err != nil {
+					return "", err
+				}
+
+				err = sendStackSyncEvent(user, sPlayback)
+				if err != nil {
+					return "", err
+				}
+				return "clearing your queue items....", nil
+			}
+
+			return h.usage, nil
+		}
+
+		// user requested to clear a specific stream
+		if args[1] == "mine" || args[1] == "me" {
+			s, exists := streamHandler.GetStream(args[2])
+			if !exists {
+				return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
+			}
+			sPlayback.GetQueue().ClearStackItem(user.GetId(), s)
+			err := sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+
+			err = sendStackSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("deleting stream with url %q", s.GetStreamURL()), nil
+		}
 	}
 
 	return h.usage, nil
@@ -107,4 +180,45 @@ func NewCmdQueue() SocketCommand {
 			usage:       QUEUE_USAGE,
 		},
 	}
+}
+
+func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
+	username, hasUsername := user.GetUsername()
+	if !hasUsername {
+		username = user.GetId()
+	}
+
+	res := &client.Response{
+		Id:   user.GetId(),
+		From: username,
+	}
+
+	err := sockutil.SerializeIntoResponse(sPlayback.GetQueue().Status(), &res.Extra)
+	if err != nil {
+		return err
+	}
+
+	user.BroadcastAll("queuesync", res)
+	return nil
+}
+
+// sendStackSyncEvent sends a queue stacksync event only to the user requesting data
+func sendStackSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
+	username, hasUsername := user.GetUsername()
+	if !hasUsername {
+		username = user.GetId()
+	}
+
+	res := &client.Response{
+		Id:   user.GetId(),
+		From: username,
+	}
+
+	err := sockutil.SerializeIntoResponse(sPlayback.GetQueue().StackStatus(user.GetId()), &res.Extra)
+	if err != nil {
+		return err
+	}
+
+	user.BroadcastTo("stacksync", res)
+	return nil
 }

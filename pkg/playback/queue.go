@@ -3,6 +3,7 @@ package playback
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
@@ -25,12 +26,21 @@ type PlaybackQueue interface {
 	Size() int
 	// Length returns the total count of QueueItems in the Queue
 	Length() int
+	// Clear deletes all of the items in the queue
+	Clear()
+	// ClearStack receives a stackId and deletes the QueueItem.
+	// If no QueueItem exists by the given stackId, a no-op takes place.
+	ClearStack(string)
+	// ClearStackItem receives a stackId and a stream and deletes the given
+	// stream.Stream from the stack. If the given stream.Stream does not
+	// exist in the stack, a no-op takes place.
+	ClearStackItem(string, stream.Stream)
 	// Status returns a top-level serializable view of the queue
 	// in order, starting from QueueItem[round-robin-index]
 	Status() api.ApiCodec
 	// StackStatus returns a breath-level and depth-level serializable view
 	// of the queue. Requires a stack id to be passed
-	StackStatus(string) (api.ApiCodec, error)
+	StackStatus(string) api.ApiCodec
 }
 
 // A queue item maps a unique id to a stack of stream.Streams
@@ -39,10 +49,30 @@ type QueueItem struct {
 	streams []stream.Stream
 }
 
-// PushStream receives a pointer to a stream.Stream and appends it to
-// an internal stack of stream.Streams.
+// PushStream receives a stream.Stream and appends it to
+// an internal stack of stream.Stream.
 func (qi *QueueItem) PushStream(s stream.Stream) {
 	qi.streams = append(qi.streams, s)
+}
+
+// ClearStream receives a stream.Stream and deletes it from
+// an internal stack of stream.Stream.
+// If a given stream is not found, a no-op takes place.
+func (qi *QueueItem) ClearStream(s stream.Stream) {
+	idx := -1
+	for i, v := range qi.streams {
+		if v.GetUniqueIdentifier() == s.GetUniqueIdentifier() {
+			idx = i
+			break
+		}
+	}
+
+	if idx >= 0 {
+		qi.streams = append(qi.streams[0:idx], qi.streams[idx+1:len(qi.streams)]...)
+		return
+	}
+
+	log.Printf("WRN PLAYBACK QUEUE no queue-stack stream found with id %s", s.GetUniqueIdentifier())
 }
 
 // PopStream returns the first item in the stack of stream.Streams, or
@@ -121,6 +151,55 @@ func (q *Queue) Length() int {
 	return len(q.items)
 }
 
+func (q *Queue) Clear() {
+	q.items = []*QueueItem{}
+	q.itemsById = make(map[string]*QueueItem)
+}
+
+func (q *Queue) ClearStack(stackId string) {
+	if stack, exists := q.itemsById[stackId]; exists {
+		delete(q.itemsById, stack.id)
+
+		idx := -1
+		for i, v := range q.items {
+			if v.id == stack.id {
+				idx = i
+				break
+			}
+		}
+
+		// if item index was found, delete
+		if idx >= 0 {
+			q.items = append(q.items[0:idx], q.items[idx+1:len(q.items)]...)
+			if q.rrCount >= len(q.items) {
+				q.rrCount--
+			}
+			if q.rrCount < 0 {
+				q.rrCount = 0
+			}
+		}
+
+		return
+	}
+
+	log.Printf("WRN PLAYBACK QUEUE no stack found with id %s", stackId)
+}
+
+func (q *Queue) ClearStackItem(stackId string, s stream.Stream) {
+	if stack, exists := q.itemsById[stackId]; exists {
+		stack.ClearStream(s)
+
+		// if removing a stream results in an empty stack, delete the stack
+		if len(stack.streams) == 0 {
+			q.ClearStack(stack.id)
+		}
+
+		return
+	}
+
+	log.Printf("WRN PLAYBACK QUEUE no stack found with id %s... Not removing stack item %q", stackId, s.GetUniqueIdentifier())
+}
+
 // QueueStatus is a serializable schema representing the top-level state of the queue.
 type QueueStatus struct {
 	// Items is a slice containing the first item in each queue-item stack
@@ -152,10 +231,8 @@ func (q *Queue) Status() api.ApiCodec {
 
 // StackStatus is a serializable schema representing a breath and depth state of the queue.
 type StackStatus struct {
-	// QueueItems is a slice containing the first item in each queue-item stack
-	QueueItems []stream.Stream `json:"queueItems"`
-	// StackItems is a slice containing all of the items in the specified stackId
-	StackItems []stream.Stream `json:"stackItems"`
+	// Items is a slice containing all items in a QueueItem
+	Items []stream.Stream `json:"items"`
 }
 
 func (s *StackStatus) Serialize() ([]byte, error) {
@@ -167,24 +244,19 @@ func (s *StackStatus) Serialize() ([]byte, error) {
 	return b, nil
 }
 
-func (q *Queue) StackStatus(stackId string) (api.ApiCodec, error) {
+func (q *Queue) StackStatus(stackId string) api.ApiCodec {
 	stack, exists := q.itemsById[stackId]
 	if !exists {
-		return nil, fmt.Errorf("stack with id %q does not exist", stackId)
+		log.Printf("WRN PLAYBACK QUEUE no stack found with id %s", stackId)
+		stack = &QueueItem{
+			id:      stackId,
+			streams: []stream.Stream{},
+		}
 	}
-
-	items := []stream.Stream{}
-	for _, i := range q.items {
-		items = append(items, i.streams[0])
-	}
-
-	// order items by current round-robin count
-	items = append(items[q.rrCount:], items[0:q.rrCount]...)
 
 	return &StackStatus{
-		QueueItems: items,
-		StackItems: stack.streams,
-	}, nil
+		Items: stack.streams,
+	}
 }
 
 func NewQueue() PlaybackQueue {

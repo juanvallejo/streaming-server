@@ -31,6 +31,10 @@ type StreamMetadataCallback func(Stream, []byte, error)
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
 type Stream interface {
+	// GetUniqueIdentifier returns a unique id
+	// assigned during stream creation, used to
+	// distinguish the stream from other streams.
+	GetUniqueIdentifier() string
 	// GetStreamURL returns a stream's resource locator
 	// (web url, filepath, etc.)
 	GetStreamURL() string
@@ -67,6 +71,10 @@ type StreamSchema struct {
 }
 
 func (s *StreamSchema) GetStreamURL() string {
+	return s.Url
+}
+
+func (s *StreamSchema) GetUniqueIdentifier() string {
 	return s.Url
 }
 
@@ -117,6 +125,9 @@ type YouTubeVideoListResponse struct {
 
 type YouTubeVideoItem struct {
 	ContentDetails map[string]interface{} `json:"contentDetails"`
+	Snippet        struct {
+		Title string `json:"title"`
+	} `json:"snippet"`
 }
 
 // ParseDuration retrieves a YouTubeVideoItem "duration" field value and
@@ -154,7 +165,7 @@ func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
 	}
 
 	go func(videoId, apiKey string, callback StreamMetadataCallback) {
-		res, err := http.Get("https://www.googleapis.com/youtube/v3/videos?id=" + videoId + "&key=" + apiKey + "&part=contentDetails")
+		res, err := http.Get("https://www.googleapis.com/youtube/v3/videos?id=" + videoId + "&key=" + apiKey + "&part=contentDetails,snippet")
 		if err != nil {
 			callback(s, nil, err)
 			return
@@ -188,6 +199,8 @@ func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
 			return
 		}
 
+		// append title
+		videoData.ContentDetails["name"] = videoData.Snippet.Title
 		jsonData, err := json.Marshal(videoData.ContentDetails)
 		if err != nil {
 			callback(s, nil, err)
