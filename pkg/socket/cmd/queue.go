@@ -1,10 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
-
-	"encoding/json"
+	"strconv"
+	"sync"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
@@ -19,8 +20,10 @@ type QueueCmd struct {
 const (
 	QUEUE_NAME        = "queue"
 	QUEUE_DESCRIPTION = "control the room queue"
-	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (add &lt;url&gt;|clear &lt;room|mine [url]&gt;|list &lt;mine|room&gt;)"
+	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (add &lt;url&gt;|clear &lt;room|mine [url]&gt;|list &lt;mine|room&gt;|order &lt;next &lt;url&gt;|mine &lt;url newposition|0,1,2...&gt;|room &lt; url newposition|0,1,2...&gt;&gt;)"
 )
+
+var mux sync.Mutex
 
 func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
@@ -167,6 +170,87 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			}
 			return fmt.Sprintf("deleting stream with url %q", s.GetStreamURL()), nil
 		}
+	case "order":
+		if len(args) < 3 {
+			return "", fmt.Errorf("%v", h.usage)
+		}
+
+		// allow only a single client to perform an "order" operation on the queue
+		mux.Lock()
+		defer mux.Unlock()
+
+		// bump item to next position in queue - relative to round-robin index
+		// only applies to overall queue -- not individual stacks since idx 0
+		// always means first on a stack.
+		if args[1] == "next" {
+			streamId := args[2]
+			sourceIdx, found := sPlayback.GetQueue().ItemIndex(streamId)
+			if !found {
+				return "", fmt.Errorf("error: source item id (%v) was not found in the queue", streamId)
+			}
+
+			// set destination index to the next index to be popped off from the queue
+			destIdx := sPlayback.GetQueue().NextIndex()
+
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Length())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+
+			err = sPlayback.GetQueue().Reorder(newOrder)
+			if err != nil {
+				return "", fmt.Errorf("error: unable to re-order queue: %v", err)
+			}
+
+			err = sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+
+			return fmt.Sprintf("re-ordering queue: setting %v as the next stream in the queue...", streamId), nil
+		}
+
+		if args[1] == "room" {
+			// if less than 4 args, interpret remaining arg as a comma delimited input representing
+			// the new overall queue order: "0,2,1,3"
+			if len(args) < 4 {
+				return "", fmt.Errorf("%v", "unimplemented")
+			}
+
+			// if we receive two extra arguments (5 total), interpret the last two args as:
+			// a string containing the queue id of the item to order, and an int defining the new
+			// destination for the given item id.
+
+			streamId := args[2]
+			sourceIdx, found := sPlayback.GetQueue().ItemIndex(streamId)
+			if !found {
+				return "", fmt.Errorf("error: source item id (%v) was not found in the queue", streamId)
+			}
+
+			destIdx, err := strconv.Atoi(args[3])
+			if err != nil {
+				return "", fmt.Errorf("error: unable to convert destination item index: %v", err)
+			}
+
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Length())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+
+			err = sPlayback.GetQueue().Reorder(newOrder)
+			if err != nil {
+				return "", fmt.Errorf("error: unable to re-order queue: %v", err)
+			}
+
+			err = sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+
+			return fmt.Sprintf("re-ordering queue: moving %v to position %v...", streamId, destIdx), nil
+		}
+
+		return h.usage, nil
 	}
 
 	return h.usage, nil
@@ -180,6 +264,43 @@ func NewCmdQueue() SocketCommand {
 			usage:       QUEUE_USAGE,
 		},
 	}
+}
+
+// calculateQueueOrder receives a sourceIdx and
+// a destIdx and returns a slice describing the
+// new order of the queue with slice[destIdx]
+// containing the value of sourceIdx.
+// Returns an int slice, or an error.
+func calculateQueueOrder(sourceIdx, destIdx, length int) ([]int, error) {
+	// if source and destination indices are the same, no-op
+	if sourceIdx == destIdx {
+		return []int{}, fmt.Errorf("current source item index (%v) is equal to destination index (%v)", sourceIdx, destIdx)
+	}
+
+	newOrder := make([]int, 0, length)
+	if destIdx > sourceIdx {
+		for i := 0; i < length; i++ {
+			if i == sourceIdx {
+				continue
+			}
+			newOrder = append(newOrder, i)
+			if i == destIdx {
+				break
+			}
+		}
+	} else {
+		for i := 0; i < length; i++ {
+			if i == destIdx {
+				break
+			}
+			if i == sourceIdx {
+				continue
+			}
+			newOrder = append(newOrder, i)
+		}
+	}
+
+	return append(newOrder, sourceIdx), nil
 }
 
 func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {

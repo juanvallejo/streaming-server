@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
@@ -38,9 +39,36 @@ type PlaybackQueue interface {
 	// Status returns a top-level serializable view of the queue
 	// in order, starting from QueueItem[round-robin-index]
 	Status() api.ApiCodec
-	// StackStatus returns a breath-level and depth-level serializable view
+	// StackStatus returns a breadth-level and depth-level serializable view
 	// of the queue. Requires a stack id to be passed
 	StackStatus(string) api.ApiCodec
+	// Reorder is a concurrency-safe method that receives an array of integers
+	// representing the new index order of QueueItems. If the length N of new
+	// indices is greater than total amount of QueueItems, the remaining new
+	// indices are ignored. If the length N of new indices is less than total
+	// QueueItems, then a total of N QueueItems will be re-ordered. The remaining
+	// QueueItems are not affected and are pushed (in their original order) after
+	// the newly affected affected items.
+	//
+	// Example:
+	//
+	//   Existing queue order: [A, B, C, D]
+	//   New queue order:      [3, 1]
+	//   Resulting order:      [D, B, A, C]
+	//
+	//   Existing queue order: [A, B, C, D]
+	//   New queue order:      [3, 1, 2, 0]
+	//   Resulting order:      [D, B, C, A]
+	//
+	// Returns an error if a list of new indices contains duplicate indices, or if any
+	// provided new index is greater than the length of the original QueueItems list.
+	Reorder([]int) error
+	// ItemIndex receives a QueueItem id and returns its current index in the queue
+	// or a boolean false if a QueueItem by that id is not found
+	ItemIndex(string) (int, bool)
+	// NextIndex returns the current round-robin index - index of QueueItem to be
+	// popped by the next call to Pop()
+	NextIndex() int
 }
 
 // A queue item maps a unique id to a stack of stream.Streams
@@ -98,6 +126,8 @@ func NewQueueItem(id string) *QueueItem {
 type Queue struct {
 	items     []*QueueItem
 	itemsById map[string]*QueueItem
+
+	mux sync.Mutex
 
 	// count used to round-robin the queue for each QueueItem
 	rrCount int
@@ -207,6 +237,67 @@ func (q *Queue) ClearStackItem(stackId string, s stream.Stream) {
 	log.Printf("WRN PLAYBACK QUEUE no stack found with id %s... Not removing stack item %q", stackId, s.GetUniqueIdentifier())
 }
 
+func (q *Queue) NextIndex() int {
+	return q.rrCount
+}
+
+func (q *Queue) ItemIndex(id string) (int, bool) {
+	for idx, item := range q.items {
+		headItem := item.streams[0]
+		if headItem.GetUniqueIdentifier() == id {
+			return idx, true
+		}
+	}
+
+	return -1, false
+}
+
+// tests https://play.golang.org/p/0iL0wdLnvI
+func (q *Queue) Reorder(newOrder []int) error {
+	if len(newOrder) == 0 {
+		return nil
+	}
+
+	q.mux.Lock()
+	defer q.mux.Unlock()
+
+	seen := make(map[int]bool)
+	newQueueItemList := make([]*QueueItem, 0, len(q.items))
+
+	for idx, newPosition := range newOrder {
+		// stop iterating if we exceed length of existing QueueItems
+		if idx >= len(q.items) {
+			break
+		}
+
+		// if newPosition exceeds length of existing QueueItems, error
+		if newPosition >= len(q.items) {
+			return fmt.Errorf("error: queue re-order index out of range: %v", newPosition)
+		}
+
+		if _, exists := seen[newPosition]; exists {
+			return fmt.Errorf("error: duplicate queue re-order index: %v", newPosition)
+		}
+
+		newQueueItemList = append(newQueueItemList, q.items[newPosition])
+		seen[newPosition] = true
+	}
+
+	// there are still items left to copy from original queue
+	if len(q.items) > len(newOrder) {
+		for idx, origItem := range q.items {
+			if _, copied := seen[idx]; copied {
+				continue
+			}
+
+			newQueueItemList = append(newQueueItemList, origItem)
+		}
+	}
+
+	q.items = newQueueItemList
+	return nil
+}
+
 // QueueStatus is a serializable schema representing the top-level state of the queue.
 type QueueStatus struct {
 	// Items is a slice containing the first item in each queue-item stack
@@ -236,7 +327,7 @@ func (q *Queue) Status() api.ApiCodec {
 	}
 }
 
-// StackStatus is a serializable schema representing a breath and depth state of the queue.
+// StackStatus is a serializable schema representing a breadth and depth state of the queue.
 type StackStatus struct {
 	// Items is a slice containing all items in a QueueItem
 	Items []stream.Stream `json:"items"`
