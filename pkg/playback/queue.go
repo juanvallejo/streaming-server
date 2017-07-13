@@ -168,12 +168,19 @@ func (q *Queue) ClearStack(stackId string) {
 			}
 		}
 
-		// if item index was found, delete
+		// if item index was found, delete and adjust
+		// round-robin count. If rrCount is >= total
+		// length of queue after stack deletion, set
+		// rrCount to 0 (next item wraps back to first).
+		// If rrCount was
 		if idx >= 0 {
 			q.items = append(q.items[0:idx], q.items[idx+1:len(q.items)]...)
 			if q.rrCount >= len(q.items) {
+				q.rrCount = 0
+			} else if q.rrCount < idx {
 				q.rrCount--
 			}
+
 			if q.rrCount < 0 {
 				q.rrCount = 0
 			}
