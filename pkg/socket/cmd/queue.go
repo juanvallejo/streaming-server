@@ -210,13 +210,15 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return fmt.Sprintf("re-ordering queue: setting %v as the next stream in the queue...", streamId), nil
 		}
 
-		if args[1] == "room" {
+		if args[1] == "room" || args[1] == "mine" {
 			// if less than 4 args, interpret remaining arg as a comma delimited input representing
 			// the new overall queue order: "0,2,1,3"
 			if len(args) < 4 {
 				return "", fmt.Errorf("%v", "unimplemented")
 			}
+		}
 
+		if args[1] == "room" {
 			// if we receive two extra arguments (5 total), interpret the last two args as:
 			// a string containing the queue id of the item to order, and an int defining the new
 			// destination for the given item id.
@@ -248,6 +250,50 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			}
 
 			return fmt.Sprintf("re-ordering queue: moving %v to position %v...", streamId, destIdx), nil
+		}
+
+		if args[1] == "mine" {
+			streamId := args[2]
+			sourceIdx, found, err := sPlayback.GetQueue().StackItemIndex(user.GetId(), streamId)
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+
+			if !found {
+				return "", fmt.Errorf("error: source item id (%v) was not found in your queue", streamId)
+			}
+
+			destIdx, err := strconv.Atoi(args[3])
+			if err != nil {
+				return "", fmt.Errorf("error: unable to convert destination item index: %v", err)
+			}
+
+			stackLength, err := sPlayback.GetQueue().StackLength(user.GetId())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, stackLength)
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+
+			err = sPlayback.GetQueue().ReorderStack(user.GetId(), newOrder)
+			if err != nil {
+				return "", fmt.Errorf("error: unable to re-order your queue: %v", err)
+			}
+
+			err = sendStackSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+
+			err = sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+
+			return fmt.Sprintf("re-ordering your queue: moving %v to position %v...", streamId, destIdx), nil
 		}
 
 		return h.usage, nil

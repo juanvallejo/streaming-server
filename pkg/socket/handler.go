@@ -184,7 +184,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		c.BroadcastTo("queuesync", res)
 	})
 
-	// this event is received when a client is requesting the current queue state for a specific QueueItem stack
+	// this event is received when a client is requesting the current queue state for a specific Queue stack
 	conn.On("request_stacksync", func(data connection.MessageDataCodec) {
 		log.Printf("INF SOCKET CLIENT client with id %q requested a queue-stack-sync", conn.Id())
 
