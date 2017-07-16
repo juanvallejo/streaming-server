@@ -65,7 +65,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		err = sendStackSyncEvent(user, sPlayback)
+		err = sendUserQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
 		}
@@ -78,7 +78,15 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		if args[1] == "mine" || args[1] == "me" {
-			status, err := sPlayback.GetQueue().StackStatus(user.GetId()).Serialize()
+			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+			if err != nil {
+				return "", err
+			}
+			if !exists {
+				userQueue = playback.NewAggregatableQueue(user.GetId())
+			}
+
+			status, err := userQueue.Serialize()
 			if err != nil {
 				return "", err
 			}
@@ -99,7 +107,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		if args[1] == "room" || args[1] == "all" {
-			status, err := sPlayback.GetQueueStatus().Serialize()
+			status, err := sPlayback.GetQueue().Serialize()
 			if err != nil {
 				return "", err
 			}
@@ -127,7 +135,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", err
 				}
 
-				err = sendStackSyncEvent(user, sPlayback)
+				err = sendUserQueueSyncEvent(user, sPlayback)
 				if err != nil {
 					return "", err
 				}
@@ -136,13 +144,21 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 			// clear a single client's queue
 			if args[1] == "mine" || args[1] == "me" {
-				sPlayback.GetQueue().ClearStack(user.GetId())
-				err := sendQueueSyncEvent(user, sPlayback)
+				userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+				if err != nil {
+					return "", fmt.Errorf("error: %v", err)
+				}
+				if !exists {
+					return "", fmt.Errorf("error: you cannot clear an empty queue.")
+				}
+
+				userQueue.Clear()
+				err = sendQueueSyncEvent(user, sPlayback)
 				if err != nil {
 					return "", err
 				}
 
-				err = sendStackSyncEvent(user, sPlayback)
+				err = sendUserQueueSyncEvent(user, sPlayback)
 				if err != nil {
 					return "", err
 				}
@@ -158,13 +174,21 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			if !exists {
 				return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
 			}
-			sPlayback.GetQueue().ClearStackItem(user.GetId(), s)
-			err := sendQueueSyncEvent(user, sPlayback)
+
+			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
+			if !exists {
+				return "", fmt.Errorf("error: you cannot delete an item from an empty queue")
+			}
+
+			err = userQueue.DeleteItem(s)
 			if err != nil {
 				return "", err
 			}
 
-			err = sendStackSyncEvent(user, sPlayback)
+			err = sendUserQueueSyncEvent(user, sPlayback)
 			if err != nil {
 				return "", err
 			}
@@ -184,15 +208,18 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		// always means first on a stack.
 		if args[1] == "next" {
 			streamId := args[2]
-			sourceIdx, found := sPlayback.GetQueue().ItemIndex(streamId)
+			sourceIdx, found, err := queueItemIndex(streamId, sPlayback.GetQueue().PeekItems())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
 			if !found {
 				return "", fmt.Errorf("error: source item id (%v) was not found in the queue", streamId)
 			}
 
 			// set destination index to the next index to be popped off from the queue
-			destIdx := sPlayback.GetQueue().NextIndex()
+			destIdx := sPlayback.GetQueue().CurrentIndex()
 
-			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Length())
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Size())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
@@ -224,7 +251,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			// destination for the given item id.
 
 			streamId := args[2]
-			sourceIdx, found := sPlayback.GetQueue().ItemIndex(streamId)
+			sourceIdx, found, err := queueItemIndex(streamId, sPlayback.GetQueue().PeekItems())
 			if !found {
 				return "", fmt.Errorf("error: source item id (%v) was not found in the queue", streamId)
 			}
@@ -234,7 +261,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				return "", fmt.Errorf("error: unable to convert destination item index: %v", err)
 			}
 
-			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Length())
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, sPlayback.GetQueue().Size())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
@@ -254,11 +281,19 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 		if args[1] == "mine" {
 			streamId := args[2]
-			sourceIdx, found, err := sPlayback.GetQueue().StackItemIndex(user.GetId(), streamId)
+
+			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
+			if !exists {
+				return "", fmt.Errorf("error: unable to re-order an empty queue")
+			}
 
+			sourceIdx, found, err := queueItemIndex(streamId, userQueue.List())
+			if err != nil {
+				return "", fmt.Errorf("error: %v", err)
+			}
 			if !found {
 				return "", fmt.Errorf("error: source item id (%v) was not found in your queue", streamId)
 			}
@@ -268,22 +303,17 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				return "", fmt.Errorf("error: unable to convert destination item index: %v", err)
 			}
 
-			stackLength, err := sPlayback.GetQueue().StackLength(user.GetId())
+			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, userQueue.Size())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
 
-			newOrder, err := calculateQueueOrder(sourceIdx, destIdx, stackLength)
-			if err != nil {
-				return "", fmt.Errorf("error: %v", err)
-			}
-
-			err = sPlayback.GetQueue().ReorderStack(user.GetId(), newOrder)
+			err = userQueue.Reorder(newOrder)
 			if err != nil {
 				return "", fmt.Errorf("error: unable to re-order your queue: %v", err)
 			}
 
-			err = sendStackSyncEvent(user, sPlayback)
+			err = sendUserQueueSyncEvent(user, sPlayback)
 			if err != nil {
 				return "", err
 			}
@@ -360,7 +390,7 @@ func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback)
 		From: username,
 	}
 
-	err := sockutil.SerializeIntoResponse(sPlayback.GetQueue().Status(), &res.Extra)
+	err := sockutil.SerializeIntoResponse(sPlayback.GetQueue(), &res.Extra)
 	if err != nil {
 		return err
 	}
@@ -369,8 +399,8 @@ func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback)
 	return nil
 }
 
-// sendStackSyncEvent sends a queue stacksync event only to the user requesting data
-func sendStackSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
+// sendUserQueueSyncEvent sends a queue stacksync event only to the user requesting data
+func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
 		username = user.GetId()
@@ -381,11 +411,36 @@ func sendStackSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback)
 		From: username,
 	}
 
-	err := sockutil.SerializeIntoResponse(sPlayback.GetQueue().StackStatus(user.GetId()), &res.Extra)
+	// find queue item with id
+	userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+	if err != nil {
+		return fmt.Errorf("error: %v", err)
+	}
+	if !exists {
+		userQueue = playback.NewAggregatableQueue(user.GetId())
+	}
+
+	err = sockutil.SerializeIntoResponse(userQueue, &res.Extra)
 	if err != nil {
 		return err
 	}
 
 	user.BroadcastTo("stacksync", res)
 	return nil
+}
+
+//
+// queueBreadthItemIndex receives a list of QueueItems and an id.
+// Returns index of QueueItem matching the given id, or a bool false.
+//
+// Breadth-first search variant of this implementation:
+// https://play.golang.org/p/48WvSd0UaB
+func queueItemIndex(id string, items []playback.QueueItem) (int, bool, error) {
+	for idx, qItem := range items {
+		if qItem.UUID() == id {
+			return idx, true, nil
+		}
+	}
+
+	return -1, false, nil
 }

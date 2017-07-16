@@ -30,11 +30,12 @@ type StreamMetadataCallback func(Stream, []byte, error)
 
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
+// Implements playback.QueueItem
 type Stream interface {
-	// GetUniqueIdentifier returns a unique id
+	// UUID returns a unique id
 	// assigned during stream creation, used to
 	// distinguish the stream from other streams.
-	GetUniqueIdentifier() string
+	UUID() string
 	// GetStreamURL returns a stream's resource locator
 	// (web url, filepath, etc.)
 	GetStreamURL() string
@@ -74,7 +75,7 @@ func (s *StreamSchema) GetStreamURL() string {
 	return s.Url
 }
 
-func (s *StreamSchema) GetUniqueIdentifier() string {
+func (s *StreamSchema) UUID() string {
 	return s.Url
 }
 

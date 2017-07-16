@@ -171,7 +171,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			From: "system",
 		}
 
-		b, err := sPlayback.GetQueueStatus().Serialize()
+		b, err := sPlayback.GetQueue().Serialize()
 		if err != nil {
 			return
 		}
@@ -206,7 +206,15 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			From: "system",
 		}
 
-		b, err := sPlayback.GetQueue().StackStatus(c.GetId()).Serialize()
+		userQueue, exists, err := util.GetUserQueue(c, sPlayback.GetQueue())
+		if err != nil {
+			return
+		}
+		if !exists {
+			userQueue = playback.NewAggregatableQueue(c.GetId())
+		}
+
+		b, err := userQueue.Serialize()
 		if err != nil {
 			return
 		}
@@ -359,9 +367,15 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 					// or queue the next item in the playback queue (if queue not empty)
 					if currStream.GetDuration() > 0 && float64(currPlayback.GetTime()) >= currStream.GetDuration() {
 						queue := currPlayback.GetQueue()
-						nextStream, err := queue.Pop()
+						queueItem, err := queue.Next()
 						if err == nil {
 							log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT detected end of stream. Auto-queuing next stream...")
+
+							nextStream, ok := queueItem.(stream.Stream)
+							if !ok {
+								log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT expected next queue item to implement stream.Stream... Unable to advance the queue.")
+								return
+							}
 
 							currPlayback.SetStream(nextStream)
 							currPlayback.Reset()
