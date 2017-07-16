@@ -14,7 +14,7 @@ import (
 // for every one stream
 type StreamPlayback struct {
 	id        string
-	queue     PlaybackQueue
+	queue     RoundRobinQueue
 	stream    stream.Stream
 	startedBy string
 	timer     *Timer
@@ -95,11 +95,14 @@ func (p *StreamPlayback) QueueStreamFromUrl(url string, user *client.Client, str
 		return err
 	}
 
-	p.queue.Push(user.GetId(), s)
+	userQueue := NewAggregatableQueue(user.GetId())
+	userQueue.Push(s)
+
+	p.queue.Push(userQueue)
 	return nil
 }
 
-func (p *StreamPlayback) GetQueue() PlaybackQueue {
+func (p *StreamPlayback) GetQueue() RoundRobinQueue {
 	return p.queue
 }
 
@@ -146,11 +149,6 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	return s, nil
 }
 
-// GetQueueStatus returns an ApiCodec describing the queue's current state
-func (p *StreamPlayback) GetQueueStatus() api.ApiCodec {
-	return p.queue.Status()
-}
-
 // StreamPlaybackStatus is a serializable schema representing a summary of information
 // about the current state of the StreamPlayback.
 // Implements api.ApiCodec.
@@ -181,7 +179,7 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 
 	return &StreamPlaybackStatus{
-		QueueLength: p.queue.Length(),
+		QueueLength: p.queue.Size(),
 		StartedBy:   p.startedBy,
 		TimerStatus: p.timer.Status(),
 		Stream:      streamCodec,
@@ -196,6 +194,6 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	return &StreamPlayback{
 		id:    id,
 		timer: NewTimer(),
-		queue: NewQueue(),
+		queue: NewRoundRobinQueue(),
 	}
 }

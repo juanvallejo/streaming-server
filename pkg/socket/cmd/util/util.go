@@ -2,9 +2,9 @@ package util
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
-	"regexp"
 )
 
 func HumanTimeToSeconds(t string) (int, error) {

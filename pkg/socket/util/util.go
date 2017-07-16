@@ -105,3 +105,23 @@ func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
 
 	return json.Unmarshal(b, dest)
 }
+
+// GetUserQueue receives a playback.RoundRobinQueue and a
+// client.Client and attempts to find an aggregated queue
+// matching the client's id.
+// Returns an error if a queue is found but is not aggregatable.
+func GetUserQueue(user *client.Client, queue playback.RoundRobinQueue) (playback.AggregatableQueue, bool, error) {
+	for _, q := range queue.List() {
+		if q.UUID() == user.GetId() {
+			userQueue, ok := q.(playback.AggregatableQueue)
+			if !ok {
+				return nil, false, fmt.Errorf("expected user queue to implement playback.AggregatableQueue")
+			}
+
+			return userQueue, true, nil
+		}
+	}
+
+	// queue not found, return empty one
+	return nil, false, nil
+}

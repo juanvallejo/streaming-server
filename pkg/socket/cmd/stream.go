@@ -99,9 +99,14 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 	case "skip":
 		// skip the currently-playing stream and replace it with the next item in the queue
 		queue := sPlayback.GetQueue()
-		nextStream, err := queue.Pop()
+		queueItem, err := queue.Next()
 		if err != nil {
 			return "", fmt.Errorf("error: %v", err)
+		}
+
+		nextStream, ok := queueItem.(stream.Stream)
+		if !ok {
+			return "", fmt.Errorf("error: expected next queue item to implement stream.Stream")
 		}
 
 		sPlayback.SetStream(nextStream)
