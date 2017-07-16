@@ -9,6 +9,9 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
+// PlaybackStreamMetadataCallback is a callback function called once metadata for a stream has been fetched
+type PlaybackStreamMetadataCallback func(data []byte, created bool, err error)
+
 // StreamPlayback represents playback status for a given
 // stream - there are one or more StreamPlayback instances
 // for every one stream
@@ -87,21 +90,6 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 	p.timer.OnTick(callback)
 }
 
-// QueueStreamUrl receives a stream url and pushes a loaded stream.Stream
-// to the end of the playback queue for a given userId.
-func (p *StreamPlayback) QueueStreamFromUrl(url string, user *client.Client, streamHandler stream.StreamHandler) error {
-	s, err := p.GetOrCreateStreamFromUrl(url, streamHandler)
-	if err != nil {
-		return err
-	}
-
-	userQueue := NewAggregatableQueue(user.GetId())
-	userQueue.Push(s)
-
-	p.queue.Push(userQueue)
-	return nil
-}
-
 func (p *StreamPlayback) GetQueue() RoundRobinQueue {
 	return p.queue
 }
@@ -120,9 +108,12 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 
 // GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)
 // and retrieves a corresponding stream.Stream, or creates a new one.
-func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler) (stream.Stream, error) {
+// Calls callback once a cached stream is fetched, or metadata has been fetched for a
+// newly-created stream.
+func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler, callback PlaybackStreamMetadataCallback) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
+		callback([]byte{}, false, nil)
 		return s, nil
 	}
 
@@ -135,14 +126,17 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	s.FetchMetadata(func(s stream.Stream, data []byte, err error) {
 		if err != nil {
 			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK unable to calculate video metadata. Some information, such as media duration, will not be available: %v", err)
+			callback(data, true, err)
 			return
 		}
 
 		err = s.SetInfo(data)
 		if err != nil {
 			log.Printf("ERR PLAYBACK FETCH-INFO-CALLBACK unable to set parsed stream info: %v", err)
+			callback(data, true, err)
 			return
 		}
+		callback(data, true, nil)
 	})
 
 	log.Printf("INF PLAYBACK no stream found with url %q; creating... There are now %v registered streams", url, streamHandler.GetSize())

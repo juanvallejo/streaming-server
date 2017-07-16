@@ -139,7 +139,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
-		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler)
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler, func(data []byte, created bool, err error) {})
 		if err != nil {
 			return "", err
 		}

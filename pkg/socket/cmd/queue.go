@@ -55,16 +55,44 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		err = sPlayback.QueueStreamFromUrl(url, user, streamHandler)
+		userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
 		if err != nil {
 			return "", err
 		}
+		if !exists {
+			userQueue = playback.NewAggregatableQueue(user.GetId())
+			sPlayback.GetQueue().Push(userQueue)
+		}
+
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
+			return func(data []byte, created bool, err error) {
+				// if a new stream was created, sync fetched metadata with client
+				if !created {
+					return
+				}
+
+				err = sendQueueSyncEvent(user, sPlayback)
+				if err != nil {
+					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send queue-sync event to client")
+					return
+				}
+				err = sendUserQueueSyncEvent(user, sPlayback)
+				if err != nil {
+					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send user-queue-sync event to client")
+					return
+				}
+			}
+		}(user, sPlayback))
+		if err != nil {
+			return "", err
+		}
+
+		userQueue.Push(s)
 
 		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
 		}
-
 		err = sendUserQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
