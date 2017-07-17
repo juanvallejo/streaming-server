@@ -403,8 +403,11 @@ func (q *RoundRobinQueueSchema) PeekItems() []QueueItem {
 }
 
 func (q *RoundRobinQueueSchema) Serialize() ([]byte, error) {
+	items := q.PeekItems()
+
+	// sort items by round-robin index
 	b, err := json.Marshal(&QueueSchema{
-		Items: q.PeekItems(),
+		Items: append(items[q.rrCount:], items[0:q.rrCount]...),
 	})
 	if err != nil {
 		return []byte{}, err
