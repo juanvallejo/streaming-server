@@ -24,6 +24,8 @@ type Queue interface {
 	// DeleteItem deletes the given QueueItem from the queue.
 	// Returns an error if QueueItem is not found
 	DeleteItem(QueueItem) error
+	// List returns a slice of aggregated QueueItems
+	List() []QueueItem
 	// Pop pops the first QueueItem in the queue.
 	// Returns the popped QueueItem or an error.
 	Pop() (QueueItem, error)
@@ -31,8 +33,8 @@ type Queue interface {
 	// a new one is created with the given id.
 	// Returns error if item could not be pushed.
 	Push(QueueItem) error
-	// List returns a slice of aggregated QueueItems
-	List() []QueueItem
+	// Set replaces its internal list of QueueItems with a received slice of QueueItems
+	Set([]QueueItem)
 	// Size returns the total amount of QueueItems in the queue
 	Size() int
 }
@@ -77,6 +79,9 @@ type RoundRobinQueue interface {
 
 	// CurrentIndex returns the current round-robin index
 	CurrentIndex() int
+	// DeleteFromQueue receives an aggregated queue within the round-robin
+	// queue and attempts to delete a QueueItem from it.
+	DeleteFromQueue(Queue, QueueItem) error
 	// Next fetches the Queue at the current round-robin
 	// index and pops its first QueueItem.
 	// If popping a QueueItem results in an empty Queue,
@@ -146,6 +151,10 @@ func (q *QueueSchema) DeleteItem(item QueueItem) error {
 	return fmt.Errorf("the item with id %q was not found in the queue", item.UUID())
 }
 
+func (q *QueueSchema) List() []QueueItem {
+	return q.Items
+}
+
 func (q *QueueSchema) Pop() (QueueItem, error) {
 	if len(q.Items) == 0 {
 		return nil, ErrNoItemsInQueue
@@ -161,8 +170,8 @@ func (q *QueueSchema) Push(item QueueItem) error {
 	return nil
 }
 
-func (q *QueueSchema) List() []QueueItem {
-	return q.Items
+func (q *QueueSchema) Set(items []QueueItem) {
+	q.Items = items
 }
 
 func (q *QueueSchema) Size() int {
@@ -186,14 +195,10 @@ func (q *ReorderableQueueSchema) Reorder(newOrder []int) error {
 		return nil
 	}
 
-	qSchema, ok := q.Queue.(*QueueSchema)
-	if !ok {
-		return ErrExpectedQueueSchema
-	}
-
 	q.mux.Lock()
 	defer q.mux.Unlock()
 
+	items := q.List()
 	seen := make(map[int]bool)
 	newQueueItemList := make([]QueueItem, 0, q.Size())
 
@@ -212,7 +217,7 @@ func (q *ReorderableQueueSchema) Reorder(newOrder []int) error {
 			return fmt.Errorf("error: duplicate queue re-order index: %v", newPosition)
 		}
 
-		newQueueItemList = append(newQueueItemList, qSchema.Items[newPosition])
+		newQueueItemList = append(newQueueItemList, items[newPosition])
 		seen[newPosition] = true
 	}
 
@@ -227,7 +232,7 @@ func (q *ReorderableQueueSchema) Reorder(newOrder []int) error {
 		}
 	}
 
-	qSchema.Items = newQueueItemList
+	q.Set(newQueueItemList)
 	return nil
 }
 
@@ -298,8 +303,10 @@ func (q *RoundRobinQueueSchema) Push(item QueueItem) error {
 		return nil
 	}
 
-	// if not exists, simply push entire queue
 	q.itemsById[newQueue.UUID()] = newQueue
+
+	// TODO: if not exists, simply push entire queue
+	// to the "end" relative to round-robin index
 	q.ReorderableQueue.Push(item)
 	return nil
 }
@@ -344,20 +351,39 @@ func (q *RoundRobinQueueSchema) DeleteItem(queue QueueItem) error {
 	return fmt.Errorf(ErrNoSuchQueueStr, queue.UUID())
 }
 
+func (q *RoundRobinQueueSchema) DeleteFromQueue(queue Queue, qItem QueueItem) error {
+	// if not aggregatable queue, skip
+	aggQueue, ok := queue.(AggregatableQueue)
+	if !ok {
+		return nil
+	}
+
+	err := aggQueue.DeleteItem(qItem)
+	if err != nil {
+		return err
+	}
+
+	if aggQueue.Size() == 0 {
+		err = q.DeleteItem(aggQueue)
+	}
+
+	return err
+}
+
 func (q *RoundRobinQueueSchema) Next() (QueueItem, error) {
 	if q.Size() == 0 {
 		return nil, ErrNoItemsInQueue
 	}
 
-	// get next queue - if empty,
-	// skip and try again
 	qItems := q.List()
 	qItem := qItems[q.rrCount]
 	aggQueue, ok := qItem.(AggregatableQueue)
 	if !ok {
-		return nil, fmt.Errorf("expected QueueItem at round-robin count %q to implement AggregatableQueue", q.rrCount) ////--
+		return nil, fmt.Errorf("expected QueueItem at round-robin count %q to implement AggregatableQueue", q.rrCount)
 	}
 
+	// get next queue - if empty,
+	// skip and try again
 	if aggQueue.Size() == 0 {
 		err := q.DeleteItem(aggQueue)
 		if err != nil {

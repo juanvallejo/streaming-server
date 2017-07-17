@@ -61,7 +61,10 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 		if !exists {
 			userQueue = playback.NewAggregatableQueue(user.GetId())
-			sPlayback.GetQueue().Push(userQueue)
+			err := sPlayback.GetQueue().Push(userQueue)
+			if err != nil {
+				return "", err
+			}
 		}
 
 		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
@@ -87,7 +90,10 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		userQueue.Push(s)
+		err = userQueue.Push(s)
+		if err != nil {
+			return "", err
+		}
 
 		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
@@ -154,66 +160,83 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", fmt.Errorf("%v", h.usage)
 		}
 
-		if len(args) < 3 {
-			// clear entire queue
-			if args[1] == "room" || args[1] == "all" {
+		// clear entire queue
+		if args[1] == "room" || args[1] == "all" {
+			msg := "clearing queue..."
+
+			// if 3 agrs, treat last arg as url of stream to delete
+			// from the current round-robin lineup
+			if len(args) > 2 {
+				var itemToDelete playback.QueueItem
+				found := false
+				userQueueIdx := -1
+
+				for idx, qItem := range sPlayback.GetQueue().PeekItems() {
+					if qItem.UUID() == args[2] {
+						itemToDelete = qItem
+						found = true
+						userQueueIdx = idx
+					}
+				}
+				if !found {
+					return "", fmt.Errorf("unable to find item with id %v in list of upcoming streams", args[2])
+				}
+
+				queues := sPlayback.GetQueue().List()
+				userQueueItem := queues[userQueueIdx]
+				userQueue, ok := userQueueItem.(playback.AggregatableQueue)
+				if !ok {
+					return "", fmt.Errorf("error: expected user queue for user with id %q to implement playback.AggregatableQueue", userQueueItem.UUID())
+				}
+
+				err := sPlayback.GetQueue().DeleteFromQueue(userQueue, itemToDelete)
+				if err != nil {
+					return "", err
+				}
+
+				msg = fmt.Sprintf("deleting stream with url %q from the queue...", args[2])
+			} else {
 				sPlayback.GetQueue().Clear()
-				err := sendQueueSyncEvent(user, sPlayback)
-				if err != nil {
-					return "", err
-				}
-
-				err = sendUserQueueSyncEvent(user, sPlayback)
-				if err != nil {
-					return "", err
-				}
-				return "clearing queue....", nil
 			}
 
-			// clear a single client's queue
-			if args[1] == "mine" || args[1] == "me" {
-				userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
-				if err != nil {
-					return "", fmt.Errorf("error: %v", err)
-				}
-				if !exists {
-					return "", fmt.Errorf("error: you cannot clear an empty queue.")
-				}
-
-				userQueue.Clear()
-				err = sendQueueSyncEvent(user, sPlayback)
-				if err != nil {
-					return "", err
-				}
-
-				err = sendUserQueueSyncEvent(user, sPlayback)
-				if err != nil {
-					return "", err
-				}
-				return "clearing your queue items....", nil
+			err := sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
 			}
-
-			return h.usage, nil
+			err = sendUserQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
+			return msg, nil
 		}
 
-		// user requested to clear a specific stream
+		// clear a single client's queue
 		if args[1] == "mine" || args[1] == "me" {
-			s, exists := streamHandler.GetStream(args[2])
-			if !exists {
-				return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
-			}
-
 			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
 			if !exists {
-				return "", fmt.Errorf("error: you cannot delete an item from an empty queue")
+				return "", fmt.Errorf("error: you cannot perform this action on an empty queue.")
 			}
 
-			err = userQueue.DeleteItem(s)
-			if err != nil {
-				return "", err
+			msg := "clearing your queue items...."
+
+			// if 3 args, treat last arg as url of stream to delete
+			if len(args) > 2 {
+				s, exists := streamHandler.GetStream(args[2])
+				if !exists {
+					return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
+				}
+
+				err := sPlayback.GetQueue().DeleteFromQueue(userQueue, s)
+				if err != nil {
+					return "", err
+				}
+
+				msg = fmt.Sprintf("deleting stream with url %q", s.GetStreamURL())
+			} else {
+				userQueue.Clear()
 			}
 
 			err = sendQueueSyncEvent(user, sPlayback)
@@ -224,8 +247,10 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("deleting stream with url %q", s.GetStreamURL()), nil
+			return msg, nil
 		}
+
+		return h.usage, nil
 	case "order":
 		if len(args) < 3 {
 			return "", fmt.Errorf("%v", h.usage)
@@ -461,8 +486,7 @@ func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayb
 	return nil
 }
 
-//
-// queueBreadthItemIndex receives a list of QueueItems and an id.
+// queueItemIndex receives a list of QueueItems and an id.
 // Returns index of QueueItem matching the given id, or a bool false.
 //
 // Breadth-first search variant of this implementation:
