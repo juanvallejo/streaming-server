@@ -277,7 +277,7 @@ type RoundRobinQueueSchema struct {
 }
 
 func (q *RoundRobinQueueSchema) Clear() {
-	q.Clear()
+	q.ReorderableQueue.Clear()
 	q.itemsById = make(map[string]AggregatableQueue)
 	q.rrCount = 0
 }
@@ -394,7 +394,9 @@ func (q *RoundRobinQueueSchema) PeekItems() []QueueItem {
 		}
 
 		aggQueueItems := aggQueue.List()
-		items = append(items, aggQueueItems[0])
+		if len(aggQueueItems) > 0 {
+			items = append(items, aggQueueItems[0])
+		}
 	}
 
 	return items

@@ -216,6 +216,10 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				return "", err
 			}
 
+			err = sendQueueSyncEvent(user, sPlayback)
+			if err != nil {
+				return "", err
+			}
 			err = sendUserQueueSyncEvent(user, sPlayback)
 			if err != nil {
 				return "", err
