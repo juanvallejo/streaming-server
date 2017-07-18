@@ -42,6 +42,10 @@ type Queue interface {
 type ReorderableQueue interface {
 	Queue
 
+	// Lock locks the ReorderableQueue mutex
+	Lock()
+	// Unlock unlocks the ReorderableQueue mutex
+	Unlock()
 	// Reorder is a concurrency-safe method that receives an array of integers
 	// representing the new index order of QueueItems. If the length N of new
 	// indices is greater than total amount of QueueItems, the remaining new
@@ -190,13 +194,21 @@ type ReorderableQueueSchema struct {
 	mux sync.Mutex
 }
 
+func (q *ReorderableQueueSchema) Lock() {
+	q.mux.Lock()
+}
+
+func (q *ReorderableQueueSchema) Unlock() {
+	q.mux.Unlock()
+}
+
 func (q *ReorderableQueueSchema) Reorder(newOrder []int) error {
 	if len(newOrder) == 0 {
 		return nil
 	}
 
-	q.mux.Lock()
-	defer q.mux.Unlock()
+	q.Lock()
+	defer q.Unlock()
 
 	items := q.List()
 	seen := make(map[int]bool)
@@ -293,6 +305,9 @@ func (q *RoundRobinQueueSchema) Push(item QueueItem) error {
 		return fmt.Errorf("expected RoundRobinQueue push item to implement AggregatableQueue")
 	}
 
+	q.Lock()
+	defer q.Unlock()
+
 	id := newQueue.UUID()
 	existingQueue, exists := q.itemsById[id]
 	if exists {
@@ -305,8 +320,26 @@ func (q *RoundRobinQueueSchema) Push(item QueueItem) error {
 
 	q.itemsById[newQueue.UUID()] = newQueue
 
-	// TODO: if not exists, simply push entire queue
+	// if not exists, simply push entire queue
 	// to the "end" relative to round-robin index
+	if q.rrCount > 0 {
+		newItems := make([]QueueItem, 0, q.Size()+1)
+		for idx, i := range q.List() {
+			if idx == q.rrCount {
+				newItems = append(newItems, item)
+			}
+
+			newItems = append(newItems, i)
+		}
+
+		// increase round-robin count to account
+		// for newly added item behind item[rrCount]
+		q.rrCount++
+		q.Set(newItems)
+
+		return nil
+	}
+
 	q.ReorderableQueue.Push(item)
 	return nil
 }
