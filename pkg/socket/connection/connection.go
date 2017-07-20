@@ -15,10 +15,17 @@ type MessageDataCodec interface {
 	Serialize() ([]byte, error)
 }
 
-// MessageData implements MessageDataCodec
-type MessageData map[string]interface{}
+type MessageData interface {
+	MessageDataCodec
 
-func (d *MessageData) Serialize() ([]byte, error) {
+	Key(string) (value interface{}, keyExists bool)
+	Set(string, interface{})
+}
+
+// MessageDataSchema implements MessageData
+type MessageDataSchema map[string]interface{}
+
+func (d *MessageDataSchema) Serialize() ([]byte, error) {
 	b, err := json.Marshal(d)
 	if err != nil {
 		return []byte{}, err
@@ -27,13 +34,21 @@ func (d *MessageData) Serialize() ([]byte, error) {
 	return b, nil
 }
 
-func (d *MessageData) Get(key string) (interface{}, bool) {
+func (d *MessageDataSchema) Key(key string) (interface{}, bool) {
 	val := (*d)[key]
 	if val == nil {
 		return nil, false
 	}
 
 	return val, true
+}
+
+func (d *MessageDataSchema) Set(key string, val interface{}) {
+	(*d)[key] = val
+}
+
+func NewMessageData() MessageData {
+	return &MessageDataSchema{}
 }
 
 type Message struct {

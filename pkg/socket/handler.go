@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
@@ -58,13 +59,13 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 	// this event is received when a client is requesting a username update
 	conn.On("request_updateusername", func(data connection.MessageDataCodec) {
-		messageData, ok := data.(*connection.MessageData)
+		messageData, ok := data.(connection.MessageData)
 		if !ok {
-			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting *connection.MessageData", "request_chatmessage")
+			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting connection.MessageData", "request_chatmessage")
 			return
 		}
 
-		rawUsername, ok := messageData.Get("user")
+		rawUsername, ok := messageData.Key("user")
 		if !ok {
 			log.Printf("ERR SOCKET CLIENT client %q sent malformed request to update username. Ignoring request.", conn.Id())
 			return
@@ -93,13 +94,13 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 	// this event is received when a client is requesting to broadcast a chat message
 	conn.On("request_chatmessage", func(data connection.MessageDataCodec) {
-		messageData, ok := data.(*connection.MessageData)
+		messageData, ok := data.(connection.MessageData)
 		if !ok {
-			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting *connection.MessageData", "request_chatmessage")
+			log.Printf("ERR SOCKET CLIENT socket connection event handler for event %q received data of wrong type. Expecting connection.MessageData", "request_chatmessage")
 			return
 		}
 
-		username, ok := messageData.Get("user")
+		username, ok := messageData.Key("user")
 		if ok {
 			log.Printf("INF SOCKET CLIENT client with id %q requested a chat message broadcast with name %q", conn.Id(), username)
 		}
@@ -110,7 +111,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		command, isCommand, err := h.ParseCommandMessage(c, *messageData)
+		command, isCommand, err := h.ParseCommandMessage(c, messageData)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT unable to parse client chat message as command: %v", err)
 			c.BroadcastSystemMessageTo(err.Error())
@@ -143,9 +144,36 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		// 	log.Printf("SOCKET CLIENT WARN ")
 		// }
 
-		res := client.ResponseFromClientData(*messageData)
-		c.BroadcastAll("chatmessage", &res)
+		images, err := h.ParseMessageMedia(messageData)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to parse client chat message media: %v", err)
+			return
+		}
 
+		res := &client.Response{
+			Id:    c.GetId(),
+			From:  "system",
+			Extra: make(map[string]interface{}),
+		}
+
+		// if images could be extracted from message, add to response
+		if len(images) > 0 {
+			res.Extra["images"] = images
+		}
+
+		b, err := data.Serialize()
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to serialize client chat message data: %v", err)
+			return
+		}
+
+		err = json.Unmarshal(b, res)
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to de-serialize client chat message into client response: %v", err)
+			return
+		}
+
+		c.BroadcastAll("chatmessage", res)
 		fmt.Printf("INF SOCKET CLIENT chatmessage received %v\n", data)
 	})
 
@@ -298,6 +326,32 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	})
 }
 
+// ParseMessageMedia receives connection.MessageData and parses
+// image urls in the "message" key, removing urls from the
+// text message, and returning them as a slice of strings
+func (h *Handler) ParseMessageMedia(data connection.MessageData) ([]string, error) {
+	message, ok := data.Key("message")
+	if !ok {
+		return []string{}, fmt.Errorf("error: invalid client message format; message field empty")
+	}
+
+	rawText, ok := message.(string)
+	if !ok {
+		return []string{}, fmt.Errorf("error: client message media parse error; unable to cast message to string")
+	}
+
+	re := regexp.MustCompile("(http(s)?://[^ ]+\\.(jpg|png|gif|jpeg))( )?")
+	urls := re.FindAllString(rawText, -1)
+	if urls == nil || len(urls) == 0 {
+		return []string{}, nil
+	}
+
+	newText := re.ReplaceAllString(rawText, "")
+	data.Set("message", newText)
+
+	return urls, nil
+}
+
 // ParseCommandMessage receives a client pointer and a data map sent by a client
 // and determines whether the "message" field in the client data map contains a
 // valid client command. An error is returned if there are any errors while parsing
@@ -306,8 +360,8 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 //
 // A valid client command will always begin with a "/" and never contain more than
 // one "/" character.
-func (h *Handler) ParseCommandMessage(client *client.Client, data map[string]interface{}) (string, bool, error) {
-	message, ok := data["message"]
+func (h *Handler) ParseCommandMessage(client *client.Client, data connection.MessageData) (string, bool, error) {
+	message, ok := data.Key("message")
 	if !ok {
 		return "", false, fmt.Errorf("error: invalid client command format; message field empty")
 	}

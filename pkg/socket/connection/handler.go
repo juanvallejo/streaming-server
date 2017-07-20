@@ -77,14 +77,14 @@ func HandleConnection(handler Handler, conn Connection) {
 		}
 
 		if mType == websocket.CloseMessage || mType == websocket.CloseGoingAway || connClosed {
-			conn.Emit("disconnection", &MessageData{})
+			conn.Emit("disconnection", NewMessageData())
 			handler.DeleteConnection(conn)
 			break
 		}
 
 		if mType == websocket.TextMessage {
 			var message Message
-			message.Data = &MessageData{}
+			message.Data = NewMessageData()
 			err := json.Unmarshal(data, &message)
 			if err != nil {
 				log.Printf("ERR WS HANDLE received non-json message: %v: %v", string(data), err)
