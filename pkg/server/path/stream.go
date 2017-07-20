@@ -35,7 +35,11 @@ func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Re
 
 	contentRange := r.Header.Get("Range")
 	if len(contentRange) == 0 {
-		contentRange = "bytes=0-"
+		tmpEndPos := strconv.Itoa(int(maxByteRange))
+		if maxByteRange > fileStat.Size()-1 {
+			tmpEndPos = strconv.Itoa(int(fileStat.Size() - 1))
+		}
+		contentRange = "bytes=0-" + tmpEndPos
 	}
 
 	contentRange = strings.Replace(contentRange, "bytes=", "", -1)
@@ -54,10 +58,6 @@ func (h *StreamPathHandler) Handle(url string, w http.ResponseWriter, r *http.Re
 	if startPos > endPos {
 		HandleInvalidRange("range start position is greater than ending position.", w, r)
 		return nil
-	}
-
-	if endPos-startPos > maxByteRange {
-		endPos = startPos + maxByteRange
 	}
 
 	byteRangeSize := endPos - startPos + 1
