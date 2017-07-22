@@ -111,7 +111,6 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 		sPlayback.SetStream(nextStream)
 		sPlayback.Reset()
-		sPlayback.UpdateStartedBy(user)
 
 		if playStreamOnSkip {
 			sPlayback.Play()
@@ -139,14 +138,13 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
-		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler, func(data []byte, created bool, err error) {})
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(data []byte, created bool, err error) {})
 		if err != nil {
 			return "", err
 		}
 
 		sPlayback.SetStream(s)
 		sPlayback.Reset()
-		sPlayback.UpdateStartedBy(user)
 
 		res := &client.Response{
 			Id:   user.GetId(),

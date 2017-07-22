@@ -25,13 +25,8 @@ type StreamPlayback struct {
 
 // UpdateStartedBy receives a client and updates the
 // startedBy field with the client's current username
-func (p *StreamPlayback) UpdateStartedBy(c *client.Client) {
-	if name, hasName := c.GetUsername(); hasName {
-		p.startedBy = name
-		return
-	}
-
-	log.Printf("WRN SOCKET CLIENT PLAYBACK attempted to update `startedBy` information, but the current client with id %q has no registered username.", c.GetId())
+func (p *StreamPlayback) UpdateStartedBy(name string) {
+	p.startedBy = name
 }
 
 // RefreshInfoFromClient receives a client and updates altered
@@ -103,6 +98,7 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
 func (p *StreamPlayback) SetStream(s stream.Stream) {
+	p.UpdateStartedBy(s.GetCreationSource().GetSourceName())
 	p.stream = s
 }
 
@@ -110,10 +106,11 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 // and retrieves a corresponding stream.Stream, or creates a new one.
 // Calls callback once a cached stream is fetched, or metadata has been fetched for a
 // newly-created stream.
-func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stream.StreamHandler, callback PlaybackStreamMetadataCallback) (stream.Stream, error) {
+func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Client, streamHandler stream.StreamHandler, callback PlaybackStreamMetadataCallback) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		callback([]byte{}, false, nil)
+		s.SetCreationSource(user)
 		return s, nil
 	}
 
@@ -121,6 +118,8 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, streamHandler stre
 	if err != nil {
 		return nil, err
 	}
+
+	s.SetCreationSource(user)
 
 	// if created new stream, fetch its duration info
 	s.FetchMetadata(func(s stream.Stream, data []byte, err error) {

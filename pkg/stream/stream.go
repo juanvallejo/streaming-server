@@ -28,6 +28,11 @@ const (
 
 type StreamMetadataCallback func(Stream, []byte, error)
 
+// StreamCreationSource describes a source of creation for a stream
+type StreamCreationSource interface {
+	GetSourceName() string
+}
+
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
 // Implements playback.QueueItem
@@ -45,6 +50,10 @@ type Stream interface {
 	GetKind() string
 	// GetDuration returns the stream's saved duration
 	GetDuration() float64
+	// SetCreationSource sets a source of creation for the stream
+	SetCreationSource(StreamCreationSource)
+	// GetCreationSource retrieves a stored source of creation for the stream
+	GetCreationSource() StreamCreationSource
 	// Codec returns a serializable representation of the
 	// current stream
 	Codec() api.ApiCodec
@@ -69,6 +78,8 @@ type StreamSchema struct {
 	Duration float64 `json:"duration"`
 	// Thumbnail is a url pointing to a still of the stream
 	Thumbnail string `json:"thumb"`
+	// CreationSource is extra info about the stream source
+	CreationSource StreamCreationSource
 }
 
 func (s *StreamSchema) GetStreamURL() string {
@@ -85,6 +96,14 @@ func (s *StreamSchema) GetName() string {
 
 func (s *StreamSchema) GetKind() string {
 	return s.Kind
+}
+
+func (s *StreamSchema) GetCreationSource() StreamCreationSource {
+	return s.CreationSource
+}
+
+func (s *StreamSchema) SetCreationSource(source StreamCreationSource) {
+	s.CreationSource = source
 }
 
 func (s *StreamSchema) GetDuration() float64 {

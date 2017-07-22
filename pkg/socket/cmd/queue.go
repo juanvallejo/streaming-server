@@ -67,7 +67,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			}
 		}
 
-		s, err := sPlayback.GetOrCreateStreamFromUrl(url, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
 			return func(data []byte, created bool, err error) {
 				// if a new stream was created, sync fetched metadata with client
 				if !created {

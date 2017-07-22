@@ -58,6 +58,16 @@ func (c *Client) GetId() string {
 	return c.connection.Id()
 }
 
+// GetSourceName retrieves a client's username (if exists)
+// or unique identifier; implements stream.StreamCreationSource
+func (c *Client) GetSourceName() string {
+	uname, exists := c.GetUsername()
+	if !exists {
+		uname = c.GetId()
+	}
+	return uname
+}
+
 func (c *Client) UpdateUsername(username string) error {
 	if _, ok := RESERVED_USERNAMES[strings.ToLower(username)]; ok {
 		return fmt.Errorf("You may not use that username")

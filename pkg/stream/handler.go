@@ -42,6 +42,10 @@ func (h *Handler) GetSize() int {
 	return len(h.streams)
 }
 
+func (h *Handler) InitGarbageCollector() {
+
+}
+
 // NewStream receives a url and resolves it
 // into a specific supported stream type
 func (h *Handler) NewStream(url string) (Stream, error) {
