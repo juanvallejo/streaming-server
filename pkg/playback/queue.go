@@ -11,9 +11,7 @@ import (
 )
 
 var (
-	ErrNoItemsInQueue      = errors.New("there are no items in the queue")
-	ErrExpectedQueueSchema = errors.New("unable to type-cast Queue into queueSchema")
-
+	ErrNoItemsInQueue = errors.New("there are no items in the queue")
 	ErrNoSuchQueueStr = "no queue found with id %v"
 )
 
@@ -132,6 +130,8 @@ func NewQueueItem(id string) QueueItem {
 // QueueSchema implements Queue
 type QueueSchema struct {
 	Items []QueueItem `json:"items"`
+
+	mux sync.Mutex
 }
 
 func (q *QueueSchema) Clear() {
@@ -163,6 +163,9 @@ func (q *QueueSchema) Pop() (QueueItem, error) {
 	if len(q.Items) == 0 {
 		return nil, ErrNoItemsInQueue
 	}
+
+	q.mux.Lock()
+	defer q.mux.Unlock()
 
 	item := q.Items[0]
 	q.Items = q.Items[1:]

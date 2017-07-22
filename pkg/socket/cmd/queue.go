@@ -20,7 +20,7 @@ type QueueCmd struct {
 const (
 	QUEUE_NAME        = "queue"
 	QUEUE_DESCRIPTION = "control the room queue"
-	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (add &lt;url&gt;|clear &lt;room|mine [url]&gt;|list &lt;mine|room&gt;|order &lt;next &lt;url&gt;|mine &lt;url newposition|0,1,2...&gt;|room &lt; url newposition|0,1,2...&gt;&gt;)"
+	QUEUE_USAGE       = "Usage: /" + QUEUE_NAME + " (migrate &lt;newQueueKey&gt;|add &lt;url&gt;|clear &lt;room|mine [url]&gt;|list &lt;mine|room&gt;|order &lt;next &lt;url&gt;|mine &lt;url newposition|0,1,2...&gt;|room &lt; url newposition|0,1,2...&gt;&gt;)"
 )
 
 var mux sync.Mutex
@@ -384,6 +384,43 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		return h.usage, nil
+	case "migrate":
+		if len(args) < 2 {
+			return h.usage, nil
+		}
+
+		fromKey := args[1]
+		oldUserQueue, exists, err := sockutil.GetQueueForId(fromKey, sPlayback.GetQueue())
+		if err != nil {
+			return "", fmt.Errorf("error: %v", err)
+		}
+		if !exists {
+			return "", fmt.Errorf("error: queue with id %q does not exist. Unable to migrate queue.", fromKey)
+		}
+
+		// requested queue exists, migrate items to new queue
+		newQueue := playback.NewAggregatableQueue(user.GetId())
+		for _, oldItem := range oldUserQueue.List() {
+			newQueue.Push(oldItem)
+		}
+		err = sPlayback.GetQueue().Push(newQueue)
+		if err != nil {
+			return "", fmt.Errorf("error: unable to migrate queue: %v", err)
+		}
+
+		// delete old queue
+		sPlayback.GetQueue().DeleteItem(oldUserQueue)
+
+		err = sendUserQueueSyncEvent(user, sPlayback)
+		if err != nil {
+			return "", err
+		}
+
+		err = sendQueueSyncEvent(user, sPlayback)
+		if err != nil {
+			return "", err
+		}
+		return "migrating queue...", err
 	}
 
 	return h.usage, nil
