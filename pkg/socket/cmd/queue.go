@@ -415,10 +415,20 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		if err != nil {
 			return "", err
 		}
-
 		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
+		}
+
+		// send user-queue-sync event to user with "fromKey" id, if still exists
+		oldUser, err := clientHandler.GetClient(fromKey)
+		if err == nil {
+			err = sendUserQueueSyncEvent(oldUser, sPlayback)
+			if err != nil {
+				log.Printf("ERR SOCKET CLIENT old client (target of migrating queue) exists, but an error ocurred emitting user-queue-sync event: %v", err)
+			} else {
+				oldUser.BroadcastSystemMessageTo(fmt.Sprintf("user %q has migrated your queue. It is theirs now.", username))
+			}
 		}
 		return "migrating queue...", err
 	}
