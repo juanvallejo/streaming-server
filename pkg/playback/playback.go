@@ -98,7 +98,7 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
 func (p *StreamPlayback) SetStream(s stream.Stream) {
-	p.UpdateStartedBy(s.GetCreationSource().GetSourceName())
+	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
 	p.stream = s
 }
 
@@ -110,7 +110,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		callback([]byte{}, false, nil)
-		s.SetCreationSource(user)
+		s.Metadata().SetCreationSource(user)
 		return s, nil
 	}
 
@@ -119,7 +119,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 		return nil, err
 	}
 
-	s.SetCreationSource(user)
+	s.Metadata().SetCreationSource(user)
 
 	// if created new stream, fetch its duration info
 	s.FetchMetadata(func(s stream.Stream, data []byte, err error) {

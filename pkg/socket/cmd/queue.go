@@ -430,7 +430,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				oldUser.BroadcastSystemMessageTo(fmt.Sprintf("user %q has migrated your queue. It is theirs now.", username))
 			}
 		}
-		return "migrating queue...", err
+		return "migrating queue...", nil
 	}
 
 	return h.usage, nil

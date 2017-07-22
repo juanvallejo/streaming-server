@@ -33,6 +33,53 @@ type StreamCreationSource interface {
 	GetSourceName() string
 }
 
+type UnknownStreamCreationSourceSchema struct{}
+
+func (u *UnknownStreamCreationSourceSchema) GetSourceName() string {
+	return "no source info"
+}
+
+type StreamCreationSourceSchema struct {
+	SourceName string `json:"name"`
+}
+
+func (c *StreamCreationSourceSchema) GetSourceName() string {
+	return c.SourceName
+}
+func NewStreamCreationSource(name string) StreamCreationSource {
+	return &StreamCreationSourceSchema{
+		SourceName: name,
+	}
+}
+
+// StreamMeta represents a Stream's metadata information
+type StreamMeta interface {
+	// SetCreationSource sets a source of creation for the stream
+	SetCreationSource(StreamCreationSource)
+	// GetCreationSource retrieves a stored source of creation for the stream
+	GetCreationSource() StreamCreationSource
+}
+
+// StreamMetaSchema implements StreamMeta
+type StreamMetaSchema struct {
+	// CreationSource is extra info about the stream source
+	CreationSource StreamCreationSource
+}
+
+func (s *StreamMetaSchema) GetCreationSource() StreamCreationSource {
+	return s.CreationSource
+}
+
+func (s *StreamMetaSchema) SetCreationSource(source StreamCreationSource) {
+	s.CreationSource = source
+}
+
+func NewStreamMeta() StreamMeta {
+	return &StreamMetaSchema{
+		CreationSource: &UnknownStreamCreationSourceSchema{},
+	}
+}
+
 // StreamData keeps track of a stream's information
 // such as a given name, filepath, etc.
 // Implements playback.QueueItem
@@ -50,13 +97,11 @@ type Stream interface {
 	GetKind() string
 	// GetDuration returns the stream's saved duration
 	GetDuration() float64
-	// SetCreationSource sets a source of creation for the stream
-	SetCreationSource(StreamCreationSource)
-	// GetCreationSource retrieves a stored source of creation for the stream
-	GetCreationSource() StreamCreationSource
 	// Codec returns a serializable representation of the
 	// current stream
 	Codec() api.ApiCodec
+	// Metadata returns the Stream's stored Meta information
+	Metadata() StreamMeta
 	// FetchMetadata calls the necessary apis / libraries needed to load
 	// extra stream information in a separate goroutine. This asynchronous
 	// method calls a passed callback function with retrieved metadata info.
@@ -78,8 +123,8 @@ type StreamSchema struct {
 	Duration float64 `json:"duration"`
 	// Thumbnail is a url pointing to a still of the stream
 	Thumbnail string `json:"thumb"`
-	// CreationSource is extra info about the stream source
-	CreationSource StreamCreationSource
+	// Metadata stores Stream abject meta information
+	Meta StreamMeta `json:"metadata"`
 }
 
 func (s *StreamSchema) GetStreamURL() string {
@@ -98,16 +143,12 @@ func (s *StreamSchema) GetKind() string {
 	return s.Kind
 }
 
-func (s *StreamSchema) GetCreationSource() StreamCreationSource {
-	return s.CreationSource
-}
-
-func (s *StreamSchema) SetCreationSource(source StreamCreationSource) {
-	s.CreationSource = source
-}
-
 func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
+}
+
+func (s *StreamSchema) Metadata() StreamMeta {
+	return s.Meta
 }
 
 func (s *StreamSchema) FetchMetadata(callback StreamMetadataCallback) {
@@ -315,6 +356,7 @@ func NewYouTubeStream(url string) Stream {
 			Url:       url,
 			Thumbnail: thumb,
 			Kind:      STREAM_TYPE_YOUTUBE,
+			Meta:      NewStreamMeta(),
 		},
 
 		apiKey: apiconfig.YT_API_KEY,
@@ -326,6 +368,7 @@ func NewTwitchStream(url string) Stream {
 		&StreamSchema{
 			Url:  url,
 			Kind: STREAM_TYPE_TWITCH,
+			Meta: NewStreamMeta(),
 		},
 	}
 }
@@ -350,6 +393,7 @@ func NewLocalVideoStream(filepath string) Stream {
 		StreamSchema: &StreamSchema{
 			Url:  filepath,
 			Kind: STREAM_TYPE_LOCAL,
+			Meta: NewStreamMeta(),
 		},
 
 		libAvRootPath: avRootPath,
