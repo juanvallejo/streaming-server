@@ -3,6 +3,7 @@ package playback
 import (
 	"encoding/json"
 	"log"
+	"time"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
@@ -100,6 +101,7 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 func (p *StreamPlayback) SetStream(s stream.Stream) {
 	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
 	p.stream = s
+	p.stream.Metadata().SetLastUpdated(time.Now())
 }
 
 // GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)

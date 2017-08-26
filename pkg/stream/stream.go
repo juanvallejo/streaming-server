@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	apiconfig "github.com/juanvallejo/streaming-server/pkg/api/config"
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
@@ -58,12 +59,20 @@ type StreamMeta interface {
 	SetCreationSource(StreamCreationSource)
 	// GetCreationSource retrieves a stored source of creation for the stream
 	GetCreationSource() StreamCreationSource
+	// SetLastUpdated receives a timestamp indicating the last time
+	// a Stream's data was updated
+	SetLastUpdated(time.Time)
+	// GetLastUpdated returns a timestamp indicating the last time
+	// a Stream's data was updated
+	GetLastUpdated() time.Time
 }
 
 // StreamMetaSchema implements StreamMeta
 type StreamMetaSchema struct {
 	// CreationSource is extra info about the stream source
 	CreationSource StreamCreationSource
+	// LastUpdated is extra info signifying the stream's last data update
+	LastUpdated time.Time `json:"lastUpdated"`
 }
 
 func (s *StreamMetaSchema) GetCreationSource() StreamCreationSource {
@@ -74,9 +83,18 @@ func (s *StreamMetaSchema) SetCreationSource(source StreamCreationSource) {
 	s.CreationSource = source
 }
 
+func (s *StreamMetaSchema) SetLastUpdated(t time.Time) {
+	s.LastUpdated = t
+}
+
+func (s *StreamMetaSchema) GetLastUpdated() time.Time {
+	return s.LastUpdated
+}
+
 func NewStreamMeta() StreamMeta {
 	return &StreamMetaSchema{
 		CreationSource: &UnknownStreamCreationSourceSchema{},
+		LastUpdated:    time.Now(),
 	}
 }
 
@@ -165,6 +183,7 @@ func (s *StreamSchema) Serialize() ([]byte, error) {
 }
 
 func (s *StreamSchema) SetInfo(data []byte) error {
+	s.Meta.SetLastUpdated(time.Now())
 	return json.Unmarshal(data, s)
 }
 

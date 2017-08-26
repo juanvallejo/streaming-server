@@ -15,6 +15,11 @@ type StreamHandler interface {
 	// Returns a Stream object or a bool (false) if a stream
 	// does not exist by the given url.
 	GetStream(string) (Stream, bool)
+	// ReapStream receives a Stream to remove from the list of composed Streams.
+	// Returns a boolean false if the stream could not be deleted, or true otherwise.
+	ReapStream(Stream) bool
+	// GetStreams returns a list of all composed streams by the handler
+	GetStreams() []Stream
 	// NewStream creates and registers a new stream object
 	// with a unique identifier url.
 	// Returns a Stream object or an error if a stream has already
@@ -27,7 +32,9 @@ type StreamHandler interface {
 // Handler provides a convenience set of methods for
 // managing supported stream instances
 type Handler struct {
-	streams map[string]Stream
+	isGarbageCollected bool
+	garbageCollector   *StreamReaper
+	streams            map[string]Stream
 }
 
 // GetStream retrieves a stream by its assigned url
@@ -38,12 +45,40 @@ func (h *Handler) GetStream(url string) (Stream, bool) {
 	return s, exists
 }
 
+func (h *Handler) ReapStream(s Stream) bool {
+	if _, exists := h.streams[s.GetStreamURL()]; exists {
+		delete(h.streams, s.GetStreamURL())
+		return exists
+	}
+	return false
+}
+
+func (h *Handler) GetStreams() []Stream {
+	streams := []Stream{}
+	for _, s := range h.streams {
+		streams = append(streams, s)
+	}
+	return streams
+}
+
 func (h *Handler) GetSize() int {
 	return len(h.streams)
 }
 
-func (h *Handler) InitGarbageCollector() {
+func (h *Handler) initGarbageCollector() {
+	// if handler is already being garbage collected, perform a no-op
+	if h.isGarbageCollected {
+		return
+	}
 
+	// if a garbage collector has not been initialized as part of the handler object, panic
+	if h.garbageCollector == nil {
+		log.Fatal("attempt to initialize nil garbage collector for streamHandler")
+	}
+
+	h.garbageCollector.Init(h)
+	h.isGarbageCollected = true
+	log.Printf("INF StreamHandler GarbageCollection started.\n")
 }
 
 // NewStream receives a url and resolves it
@@ -94,4 +129,13 @@ func NewHandler() StreamHandler {
 	return &Handler{
 		streams: make(map[string]Stream),
 	}
+}
+
+func NewGarbageCollectedHandler() StreamHandler {
+	h := &Handler{
+		garbageCollector: NewStreamReaper(),
+		streams:          make(map[string]Stream),
+	}
+	h.initGarbageCollector()
+	return h
 }

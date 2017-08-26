@@ -67,6 +67,11 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			}
 		}
 
+		// do not create and push stream if user queue is at its storage limit
+		if userQueue.Size() >= playback.MaxAggregatableQueueItems {
+			return "", playback.ErrMaxQueueSizeExceeded
+		}
+
 		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
 			return func(data []byte, created bool, err error) {
 				// if a new stream was created, sync fetched metadata with client

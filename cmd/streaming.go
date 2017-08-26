@@ -16,7 +16,12 @@ func main() {
 	port := flag.String("port", "8080", "default port to listen on")
 	flag.Parse()
 
-	socketHandler := socket.NewHandler(cmd.NewHandler(), client.NewHandler(), playback.NewHandler(), stream.NewHandler())
+	socketHandler := socket.NewHandler(
+		cmd.NewHandler(),
+		client.NewHandler(),
+		playback.NewHandler(),
+		stream.NewGarbageCollectedHandler(),
+	)
 	requestHandler := server.NewRequestHandler(socketHandler)
 
 	// init http server with socket.io support

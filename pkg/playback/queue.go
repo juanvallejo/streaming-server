@@ -10,9 +10,14 @@ import (
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 )
 
+const (
+	MaxAggregatableQueueItems = 10
+)
+
 var (
-	ErrNoItemsInQueue = errors.New("there are no items in the queue")
-	ErrNoSuchQueueStr = "no queue found with id %v"
+	ErrNoItemsInQueue       = errors.New("there are no items in the queue")
+	ErrNoSuchQueueStr       = "no queue found with id %v"
+	ErrMaxQueueSizeExceeded = fmt.Errorf("You cannot store more than %v items in your queue.", MaxAggregatableQueueItems)
 )
 
 // Queue performs collection operations on a fifo structure
@@ -272,6 +277,14 @@ func (q *AggregatableQueueSchema) Serialize() ([]byte, error) {
 	}
 
 	return b, nil
+}
+
+func (q *AggregatableQueueSchema) Push(item QueueItem) error {
+	if q.Size() >= MaxAggregatableQueueItems {
+		return ErrMaxQueueSizeExceeded
+	}
+
+	return q.ReorderableQueue.Push(item)
 }
 
 func NewAggregatableQueue(id string) AggregatableQueue {
