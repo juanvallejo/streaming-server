@@ -17,11 +17,17 @@ type PlaybackStreamMetadataCallback func(data []byte, created bool, err error)
 // stream - there are one or more StreamPlayback instances
 // for every one stream
 type StreamPlayback struct {
-	id        string
-	queue     RoundRobinQueue
-	stream    stream.Stream
-	startedBy string
-	timer     *Timer
+	id          string
+	queue       RoundRobinQueue
+	stream      stream.Stream
+	startedBy   string
+	timer       *Timer
+	lastUpdated time.Time
+
+	// reapable indicates whether the object
+	// is a candidate for being reaped from
+	// a StreamPlayback composer
+	Reapable bool
 }
 
 // UpdateStartedBy receives a client and updates the
@@ -55,29 +61,52 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 	return false
 }
 
+// Cleanup handles resource cleanup for room resources
+func (p *StreamPlayback) Cleanup() {
+	p.timer.Stop()
+	p.timer.callback = nil
+	p.timer = nil
+	p.queue.Clear()
+	p.queue = nil
+	p.stream = nil
+}
+
 func (p *StreamPlayback) Pause() error {
+	p.SetLastUpdated(time.Now())
 	return p.timer.Pause()
 }
 
 func (p *StreamPlayback) Play() error {
+	p.SetLastUpdated(time.Now())
 	return p.timer.Play()
 }
 
 func (p *StreamPlayback) Stop() error {
+	p.SetLastUpdated(time.Now())
 	return p.timer.Stop()
 }
 
 func (p *StreamPlayback) Reset() error {
+	p.SetLastUpdated(time.Now())
 	return p.timer.Set(0)
 }
 
 func (p *StreamPlayback) SetTime(newTime int) error {
+	p.SetLastUpdated(time.Now())
 	p.timer.Set(newTime)
 	return nil
 }
 
 func (p *StreamPlayback) GetTime() int {
 	return p.timer.GetTime()
+}
+
+func (p *StreamPlayback) GetLastUpdated() time.Time {
+	return p.lastUpdated
+}
+
+func (p *StreamPlayback) SetLastUpdated(t time.Time) {
+	p.lastUpdated = t
 }
 
 // OnTick calls the playback object's timer object and sets its
@@ -102,6 +131,7 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
 	p.stream = s
 	p.stream.Metadata().SetLastUpdated(time.Now())
+	p.SetLastUpdated(time.Now())
 }
 
 // GetOrCreateStreamFromUrl receives a stream location (path, url, or unique identifier)
@@ -187,8 +217,9 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	}
 
 	return &StreamPlayback{
-		id:    id,
-		timer: NewTimer(),
-		queue: NewRoundRobinQueue(),
+		id:          id,
+		timer:       NewTimer(),
+		queue:       NewRoundRobinQueue(),
+		lastUpdated: time.Now(),
 	}
 }

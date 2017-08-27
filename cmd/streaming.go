@@ -19,7 +19,7 @@ func main() {
 	socketHandler := socket.NewHandler(
 		cmd.NewHandler(),
 		client.NewHandler(),
-		playback.NewHandler(),
+		playback.NewGarbageCollectedHandler(),
 		stream.NewGarbageCollectedHandler(),
 	)
 	requestHandler := server.NewRequestHandler(socketHandler)

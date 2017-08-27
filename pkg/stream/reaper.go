@@ -33,14 +33,14 @@ func reap(reaper *StreamReaper, handler StreamHandler, stop chan bool) {
 		for _, s := range handler.GetStreams() {
 			if time.Now().Sub(s.Metadata().GetLastUpdated()) > reaper.maxStaleStreamLifetime {
 				if handler.ReapStream(s) {
-					log.Printf("INF stream with url %q has become a candidate for reaping after %v. Reaping...\n", s.GetStreamURL(), time.Now().Sub(s.Metadata().GetLastUpdated()))
+					log.Printf("INF REAPER stream with url %q has become a candidate for reaping after %v. Reaping...\n", s.GetStreamURL(), time.Now().Sub(s.Metadata().GetLastUpdated()))
 				}
 			}
 		}
 
 		select {
 		case <-stop:
-			log.Printf("INF StreamReaper terminated.\n")
+			log.Printf("INF REAPER StreamReaper terminated.\n")
 			return
 		default:
 		}

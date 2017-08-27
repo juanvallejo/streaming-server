@@ -17,7 +17,7 @@ const (
 var (
 	ErrNoItemsInQueue       = errors.New("there are no items in the queue")
 	ErrNoSuchQueueStr       = "no queue found with id %v"
-	ErrMaxQueueSizeExceeded = fmt.Errorf("You cannot store more than %v items in your queue.", MaxAggregatableQueueItems)
+	ErrMaxQueueSizeExceeded = fmt.Errorf("you cannot store more than %v items in your queue.", MaxAggregatableQueueItems)
 )
 
 // Queue performs collection operations on a fifo structure
@@ -310,6 +310,14 @@ type RoundRobinQueueSchema struct {
 }
 
 func (q *RoundRobinQueueSchema) Clear() {
+	for _, i := range q.itemsById {
+		agg, ok := i.(AggregatableQueue)
+		if !ok {
+			continue
+		}
+		agg.Clear()
+	}
+
 	q.ReorderableQueue.Clear()
 	q.itemsById = make(map[string]AggregatableQueue)
 	q.rrCount = 0

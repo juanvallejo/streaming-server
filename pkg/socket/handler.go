@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
@@ -48,6 +49,37 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 					Id:   conn.Id(),
 					From: userName,
 				})
+			}
+
+			room, exists := c.GetRoom()
+			if exists {
+				sPlayback, sPlaybackExists := h.PlaybackHandler.GetStreamPlayback(room)
+				if sPlaybackExists {
+					// if client has joined a room, and room still exists
+					// check if at least one other client is in that room. If not,
+					// mark room as reapable.
+					shouldReap := true
+					for _, x := range h.clientHandler.GetClients() {
+						if c.GetId() == x.GetId() {
+							continue
+						}
+						r, e := x.GetRoom()
+						if !e {
+							continue
+						}
+						if r == room {
+							shouldReap = false
+							break
+						}
+					}
+
+					if shouldReap {
+						// update room's last updated time to give buffer
+						// between last client leaving and room reaping.
+						sPlayback.SetLastUpdated(time.Now())
+						sPlayback.Reapable = true
+					}
+				}
 			}
 		}
 
@@ -491,6 +523,10 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 		return
 	}
+
+	// mark playback object as unreapable
+	sPlayback.Reapable = false
+	sPlayback.SetLastUpdated(time.Now())
 
 	log.Printf("INF SOCKET CLIENT found StreamPlayback for room with name %q", roomName)
 
