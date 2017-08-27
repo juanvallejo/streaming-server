@@ -21,10 +21,10 @@ type TimerCallback func(int)
 
 // Timer keeps track of playback time
 type Timer struct {
-	time     int
-	state    int
-	callback TimerCallback
-	timeChan chan int
+	time      int
+	state     int
+	callbacks []TimerCallback
+	timeChan  chan int
 }
 
 func (t *Timer) Play() error {
@@ -81,7 +81,7 @@ func (t *Timer) Set(time int) error {
 }
 
 func (t *Timer) OnTick(callback TimerCallback) {
-	t.callback = callback
+	t.callbacks = append(t.callbacks, callback)
 }
 
 func (t *Timer) GetTime() int {
@@ -132,8 +132,10 @@ func Increment(timer *Timer, c chan int) {
 		time.Sleep(time.Duration(1 * time.Second))
 		timer.time++
 
-		if timer.callback != nil {
-			timer.callback(timer.time)
+		if len(timer.callbacks) > 0 {
+			for _, c := range timer.callbacks {
+				c(timer.time)
+			}
 		}
 
 		select {
@@ -152,7 +154,8 @@ func Increment(timer *Timer, c chan int) {
 
 func NewTimer() *Timer {
 	return &Timer{
-		state:    TIMER_STOP,
-		timeChan: make(chan int, MAX_TIMER_CHAN_BUFFER),
+		state:     TIMER_STOP,
+		timeChan:  make(chan int, MAX_TIMER_CHAN_BUFFER),
+		callbacks: []TimerCallback{},
 	}
 }

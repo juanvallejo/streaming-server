@@ -24,7 +24,10 @@ type StreamPlayback struct {
 	timer       *Timer
 	lastUpdated time.Time
 
-	// reapable indicates whether the object
+	// indicates whether the playback object should stop updating the current stream
+	streamUpdateStopChan chan bool
+
+	// Reapable indicates whether the object
 	// is a candidate for being reaped from
 	// a StreamPlayback composer
 	Reapable bool
@@ -63,8 +66,13 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 
 // Cleanup handles resource cleanup for room resources
 func (p *StreamPlayback) Cleanup() {
+	if p.stream != nil {
+		p.stream.Metadata().SetReapable(true)
+	}
+
+	p.streamUpdateStopChan <- true
 	p.timer.Stop()
-	p.timer.callback = nil
+	p.timer.callbacks = []TimerCallback{}
 	p.timer = nil
 	p.queue.Clear()
 	p.queue = nil
@@ -128,6 +136,14 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
 func (p *StreamPlayback) SetStream(s stream.Stream) {
+	if p.stream != nil {
+		// if previous stream exists, mark reapable since it is
+		// no longer in use by this stream playback. If another
+		// stream is using it, it is up to that stream playback
+		// to re-mark it as unreapable and update its lastUpdated.
+		p.stream.Metadata().SetReapable(true)
+	}
+
 	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
 	p.stream = s
 	p.stream.Metadata().SetLastUpdated(time.Now())
@@ -211,15 +227,41 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 }
 
+// update current playback stream periodically to prevent it from being reaped
+func (p *StreamPlayback) initStreamUpdate() {
+	go streamUpdate(p, p.streamUpdateStopChan)
+}
+
+func streamUpdate(p *StreamPlayback, stop chan bool) {
+	for {
+		if p.stream != nil {
+			p.stream.Metadata().SetLastUpdated(time.Now())
+			p.stream.Metadata().SetReapable(false)
+		}
+
+		select {
+		case <-stop:
+			return
+		default:
+		}
+
+		time.Sleep(1 * time.Minute)
+	}
+}
+
 func NewStreamPlayback(id string) *StreamPlayback {
 	if len(id) == 0 {
 		panic("A playback id is required to instantiate a new playback")
 	}
 
-	return &StreamPlayback{
-		id:          id,
-		timer:       NewTimer(),
-		queue:       NewRoundRobinQueue(),
-		lastUpdated: time.Now(),
+	s := &StreamPlayback{
+		id:                   id,
+		timer:                NewTimer(),
+		queue:                NewRoundRobinQueue(),
+		lastUpdated:          time.Now(),
+		streamUpdateStopChan: make(chan bool, 1),
 	}
+
+	s.initStreamUpdate()
+	return s
 }

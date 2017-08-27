@@ -65,6 +65,12 @@ type StreamMeta interface {
 	// GetLastUpdated returns a timestamp indicating the last time
 	// a Stream's data was updated
 	GetLastUpdated() time.Time
+	// SetReapable receives a bool determining whether or not
+	// to mark the object as reapable or not.
+	SetReapable(bool)
+	// IsReapable returns a bool indicating whether the object
+	// has been marked for reaping or not.
+	IsReapable() bool
 }
 
 // StreamMetaSchema implements StreamMeta
@@ -73,6 +79,10 @@ type StreamMetaSchema struct {
 	CreationSource StreamCreationSource
 	// LastUpdated is extra info signifying the stream's last data update
 	LastUpdated time.Time `json:"lastUpdated"`
+	// Reapable indicates whether the object
+	// is a candidate for being reaped from
+	// a composer
+	Reapable bool
 }
 
 func (s *StreamMetaSchema) GetCreationSource() StreamCreationSource {
@@ -89,6 +99,14 @@ func (s *StreamMetaSchema) SetLastUpdated(t time.Time) {
 
 func (s *StreamMetaSchema) GetLastUpdated() time.Time {
 	return s.LastUpdated
+}
+
+func (s *StreamMetaSchema) SetReapable(r bool) {
+	s.Reapable = r
+}
+
+func (s *StreamMetaSchema) IsReapable() bool {
+	return s.Reapable
 }
 
 func NewStreamMeta() StreamMeta {

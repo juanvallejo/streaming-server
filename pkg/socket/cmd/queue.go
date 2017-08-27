@@ -100,6 +100,9 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
+		// mark stream as unreapable while it is aggregated in the queue
+		s.Metadata().SetReapable(false)
+
 		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
 			return "", err
