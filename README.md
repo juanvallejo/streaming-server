@@ -106,5 +106,5 @@ Additionally, by default, clients will automatically load the next item in the q
 
 ### TODO
 
-- Add ui for commonly used commands that control stream playback and queue actions.
+- ~~Add ui for commonly used commands that control stream playback and queue actions.~~
 - Add a client `config` that allows certain features to be turned on or off (such as automatically playing the next item in the queue).
