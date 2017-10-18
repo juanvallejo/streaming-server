@@ -95,13 +95,10 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		err = userQueue.Push(s)
+		err = sPlayback.PushUserQueue(userQueue, s)
 		if err != nil {
 			return "", err
 		}
-
-		// mark stream as unreapable while it is aggregated in the queue
-		s.Metadata().SetReapable(false)
 
 		err = sendQueueSyncEvent(user, sPlayback)
 		if err != nil {
@@ -184,6 +181,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 						itemToDelete = qItem
 						found = true
 						userQueueIdx = idx
+						break
 					}
 				}
 				if !found {
@@ -197,13 +195,20 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", fmt.Errorf("error: expected user queue for user with id %q to implement playback.AggregatableQueue", userQueueItem.UUID())
 				}
 
-				err := sPlayback.GetQueue().DeleteFromQueue(userQueue, itemToDelete)
+				err := sPlayback.PopUserQueue(userQueue, itemToDelete)
 				if err != nil {
 					return "", err
 				}
 
 				msg = fmt.Sprintf("deleting stream with url %q from the queue...", args[2])
 			} else {
+				// TODO: make this a helper or a method in sPlayback
+				sPlayback.GetQueue().Visit(func(userQueue playback.AggregatableQueue) {
+					for _, userQueueItem := range userQueue.List() {
+						sPlayback.PopUserQueue(userQueue, userQueueItem)
+					}
+				})
+
 				sPlayback.GetQueue().Clear()
 			}
 
@@ -237,13 +242,17 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
 				}
 
-				err := sPlayback.GetQueue().DeleteFromQueue(userQueue, s)
+				err := sPlayback.PopUserQueue(userQueue, s)
 				if err != nil {
 					return "", err
 				}
 
 				msg = fmt.Sprintf("deleting stream with url %q", s.GetStreamURL())
 			} else {
+				for _, userQueueItem := range userQueue.List() {
+					sPlayback.PopUserQueue(userQueue, userQueueItem)
+				}
+
 				userQueue.Clear()
 			}
 
@@ -416,7 +425,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", fmt.Errorf("error: unable to migrate queue: %v", err)
 		}
 
-		// delete old queue
+		// delete old queue - no need to delete parentRef
 		sPlayback.GetQueue().DeleteItem(oldUserQueue)
 
 		err = sendUserQueueSyncEvent(user, sPlayback)

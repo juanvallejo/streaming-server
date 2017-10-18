@@ -24,13 +24,14 @@ type StreamPlayback struct {
 	timer       *Timer
 	lastUpdated time.Time
 
-	// indicates whether the playback object should stop updating the current stream
-	streamUpdateStopChan chan bool
-
 	// Reapable indicates whether the object
 	// is a candidate for being reaped from
 	// a StreamPlayback composer
 	Reapable bool
+}
+
+func (p *StreamPlayback) UUID() string {
+	return p.id
 }
 
 // UpdateStartedBy receives a client and updates the
@@ -66,11 +67,6 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 
 // Cleanup handles resource cleanup for room resources
 func (p *StreamPlayback) Cleanup() {
-	if p.stream != nil {
-		p.stream.Metadata().SetReapable(true)
-	}
-
-	p.streamUpdateStopChan <- true
 	p.timer.Stop()
 	p.timer.callbacks = []TimerCallback{}
 	p.timer = nil
@@ -127,6 +123,38 @@ func (p *StreamPlayback) GetQueue() RoundRobinQueue {
 	return p.queue
 }
 
+// PushUserQueue pushes a stream to the queue belonging to the given user
+// and adds the StreamPlayback object as the parentRef to the pushed stream.
+func (p *StreamPlayback) PushUserQueue(userQueue AggregatableQueue, s stream.Stream) error {
+	if err := userQueue.Push(s); err == nil {
+		// mark stream as unreapable while it is aggregated in the queue
+		if !s.Metadata().AddParentRef(p) {
+			log.Printf("INF SOCKET CLIENT duplicate attempt to set parent ref %q to stream %q\n", p.UUID(), s.UUID())
+		}
+	}
+	return nil
+}
+
+// PopUserQueue pops a stream from the queue belonging to the given user
+// and removes the StreamPlayback object from the popped stream's parentRef.
+func (p *StreamPlayback) PopUserQueue(userQueue AggregatableQueue, qi QueueItem) error {
+	err := p.GetQueue().DeleteFromQueue(userQueue, qi)
+	if err != nil {
+		return err
+	}
+
+	s, ok := qi.(stream.Stream)
+	if !ok {
+		log.Printf("INF SOCKET CLIENT unable to remove parent ref %q from QueueItem %q: does not implement stream.Stream", p.UUID(), s.UUID())
+		return nil
+	}
+
+	if !s.Metadata().RemoveParentRef(p) {
+		log.Printf("INF SOCKET CLIENT unable to remove parent ref %q from stream %q\n", p.UUID(), s.UUID())
+	}
+	return nil
+}
+
 // GetStream returns a stream.Stream object containing current stream data
 // tied to the current StreamPlayback object, or a bool (false) if there
 // is no stream information currently loaded for the current StreamPlayback
@@ -137,11 +165,8 @@ func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
 func (p *StreamPlayback) SetStream(s stream.Stream) {
 	if p.stream != nil {
-		// if previous stream exists, mark reapable since it is
-		// no longer in use by this stream playback. If another
-		// stream is using it, it is up to that stream playback
-		// to re-mark it as unreapable and update its lastUpdated.
-		p.stream.Metadata().SetReapable(true)
+		// remove StreamPlayback object from list of current stream's refs
+		p.stream.Metadata().RemoveParentRef(p)
 	}
 
 	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
@@ -227,41 +252,15 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 }
 
-// update current playback stream periodically to prevent it from being reaped
-func (p *StreamPlayback) initStreamUpdate() {
-	go streamUpdate(p, p.streamUpdateStopChan)
-}
-
-func streamUpdate(p *StreamPlayback, stop chan bool) {
-	for {
-		if p.stream != nil {
-			p.stream.Metadata().SetLastUpdated(time.Now())
-			p.stream.Metadata().SetReapable(false)
-		}
-
-		select {
-		case <-stop:
-			return
-		default:
-		}
-
-		time.Sleep(1 * time.Minute)
-	}
-}
-
 func NewStreamPlayback(id string) *StreamPlayback {
 	if len(id) == 0 {
 		panic("A playback id is required to instantiate a new playback")
 	}
 
-	s := &StreamPlayback{
-		id:                   id,
-		timer:                NewTimer(),
-		queue:                NewRoundRobinQueue(),
-		lastUpdated:          time.Now(),
-		streamUpdateStopChan: make(chan bool, 1),
+	return &StreamPlayback{
+		id:          id,
+		timer:       NewTimer(),
+		queue:       NewRoundRobinQueue(),
+		lastUpdated: time.Now(),
 	}
-
-	s.initStreamUpdate()
-	return s
 }

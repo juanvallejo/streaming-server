@@ -34,6 +34,12 @@ type StreamCreationSource interface {
 	GetSourceName() string
 }
 
+// StreamParentRef is a composer of Stream
+type StreamParentRef interface {
+	// UUID returns a unique uuid for a parentRef
+	UUID() string
+}
+
 type UnknownStreamCreationSourceSchema struct{}
 
 func (u *UnknownStreamCreationSourceSchema) GetSourceName() string {
@@ -65,12 +71,14 @@ type StreamMeta interface {
 	// GetLastUpdated returns a timestamp indicating the last time
 	// a Stream's data was updated
 	GetLastUpdated() time.Time
-	// SetReapable receives a bool determining whether or not
-	// to mark the object as reapable or not.
-	SetReapable(bool)
-	// IsReapable returns a bool indicating whether the object
-	// has been marked for reaping or not.
-	IsReapable() bool
+	// AddParentRef receives a StreamParentRef and appends it to an internal list of parentRefs
+	// if a duplicate parentRef is given, a boolean false is returned
+	AddParentRef(StreamParentRef) bool
+	// RemoveParentRef receives a StreamParentRef and removes it from an internal list of parentRefs
+	// if a given parentRef is not found, a boolean false is returned
+	RemoveParentRef(StreamParentRef) bool
+	// GetParentRefs returns a list of all currently stored parentRefs
+	GetParentRefs() []StreamParentRef
 }
 
 // StreamMetaSchema implements StreamMeta
@@ -79,10 +87,8 @@ type StreamMetaSchema struct {
 	CreationSource StreamCreationSource
 	// LastUpdated is extra info signifying the stream's last data update
 	LastUpdated time.Time `json:"lastUpdated"`
-	// Reapable indicates whether the object
-	// is a candidate for being reaped from
-	// a composer
-	Reapable bool
+	// ParentRefs stores a list of StreamParentRef
+	ParentRefs map[string]StreamParentRef
 }
 
 func (s *StreamMetaSchema) GetCreationSource() StreamCreationSource {
@@ -101,18 +107,35 @@ func (s *StreamMetaSchema) GetLastUpdated() time.Time {
 	return s.LastUpdated
 }
 
-func (s *StreamMetaSchema) SetReapable(r bool) {
-	s.Reapable = r
+func (s *StreamMetaSchema) GetParentRefs() []StreamParentRef {
+	refs := []StreamParentRef{}
+	for _, r := range s.ParentRefs {
+		refs = append(refs, r)
+	}
+	return refs
 }
 
-func (s *StreamMetaSchema) IsReapable() bool {
-	return s.Reapable
+func (s *StreamMetaSchema) AddParentRef(ref StreamParentRef) bool {
+	if _, exists := s.ParentRefs[ref.UUID()]; exists {
+		return false
+	}
+	s.ParentRefs[ref.UUID()] = ref
+	return true
+}
+
+func (s *StreamMetaSchema) RemoveParentRef(ref StreamParentRef) bool {
+	if _, exists := s.ParentRefs[ref.UUID()]; exists {
+		delete(s.ParentRefs, ref.UUID())
+		return true
+	}
+	return false
 }
 
 func NewStreamMeta() StreamMeta {
 	return &StreamMetaSchema{
 		CreationSource: &UnknownStreamCreationSourceSchema{},
 		LastUpdated:    time.Now(),
+		ParentRefs:     make(map[string]StreamParentRef),
 	}
 }
 

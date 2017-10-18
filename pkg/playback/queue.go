@@ -20,6 +20,8 @@ var (
 	ErrMaxQueueSizeExceeded = fmt.Errorf("you cannot store more than %v items in your queue.", MaxAggregatableQueueItems)
 )
 
+type RoundRobinQueueVisitor func(AggregatableQueue)
+
 // Queue performs collection operations on a fifo structure
 type Queue interface {
 	// Clear empties all QueueItems in the queue
@@ -98,6 +100,15 @@ type RoundRobinQueue interface {
 	// PeekItems returns a slice containing the first item
 	// from each aggregated QueueItem in the queue.
 	PeekItems() []QueueItem
+	// VisitAndClear visits each QueueItem and calls the RoundRobinQueueVisitor
+	// passing each AggregatableQueue to the RoundRobinQueueVisitor before
+	// calling the AggregatableQueue's Clear method.
+	// After each AggregatableQueue aggregated by the RoundRobinQueue has been
+	// visited and cleared, the RoundRobinQueue itself will be cleared / reset.
+	VisitAndClear(RoundRobinQueueVisitor)
+	// Visit visits each QueueItem aggregated by the RoundRobinQueue and
+	// passes each item to the RoundRobinQueueVisitor.
+	Visit(RoundRobinQueueVisitor)
 }
 
 // AggregatableQueue is a queue that can be aggregated as a QueueItem
@@ -321,6 +332,31 @@ func (q *RoundRobinQueueSchema) Clear() {
 	q.ReorderableQueue.Clear()
 	q.itemsById = make(map[string]AggregatableQueue)
 	q.rrCount = 0
+}
+
+func (q *RoundRobinQueueSchema) VisitAndClear(visitor RoundRobinQueueVisitor) {
+	for _, i := range q.itemsById {
+		agg, ok := i.(AggregatableQueue)
+		if !ok {
+			continue
+		}
+		visitor(agg)
+		agg.Clear()
+	}
+
+	q.ReorderableQueue.Clear()
+	q.itemsById = make(map[string]AggregatableQueue)
+	q.rrCount = 0
+}
+
+func (q *RoundRobinQueueSchema) Visit(visitor RoundRobinQueueVisitor) {
+	for _, i := range q.itemsById {
+		agg, ok := i.(AggregatableQueue)
+		if !ok {
+			continue
+		}
+		visitor(agg)
+	}
 }
 
 func (q *RoundRobinQueueSchema) Push(item QueueItem) error {
