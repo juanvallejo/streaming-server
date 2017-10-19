@@ -2,6 +2,7 @@ package playback
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -17,12 +18,12 @@ type PlaybackStreamMetadataCallback func(data []byte, created bool, err error)
 // stream - there are one or more StreamPlayback instances
 // for every one stream
 type StreamPlayback struct {
-	id          string
-	queue       RoundRobinQueue
-	stream      stream.Stream
-	startedBy   string
-	timer       *Timer
-	lastUpdated time.Time
+	id           string
+	queueHandler QueueHandler
+	stream       stream.Stream
+	startedBy    string
+	timer        *Timer
+	lastUpdated  time.Time
 
 	// Reapable indicates whether the object
 	// is a candidate for being reaped from
@@ -70,8 +71,7 @@ func (p *StreamPlayback) Cleanup() {
 	p.timer.Stop()
 	p.timer.callbacks = []TimerCallback{}
 	p.timer = nil
-	p.queue.Clear()
-	p.queue = nil
+	p.ClearQueue()
 	p.stream = nil
 }
 
@@ -119,14 +119,50 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 	p.timer.OnTick(callback)
 }
 
+func (p *StreamPlayback) ClearQueue() error {
+	var errs []error
+
+	p.queueHandler.Queue().Visit(func(item QueueItem) {
+		userQueue, ok := item.(AggregatableQueue)
+		if !ok {
+			return
+		}
+
+		for _, userQueueItem := range userQueue.List() {
+			if err := p.PopFromQueue(userQueue, userQueueItem); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	})
+
+	p.queueHandler.Clear()
+
+	var errMsg string
+	if len(errs) > 0 {
+		errMsg = "INF SOCKET CLIENT the following errors occurred while attempting to clear the queue:"
+		for _, e := range errs {
+			errMsg += "\n    " + e.Error()
+		}
+	}
+	return fmt.Errorf("%v", errMsg)
+}
+
+func (p *StreamPlayback) ClearUserQueue(userQueue AggregatableQueue) {
+	for _, userQueueItem := range userQueue.List() {
+		p.PopFromQueue(userQueue, userQueueItem)
+	}
+
+	userQueue.Clear()
+}
+
 func (p *StreamPlayback) GetQueue() RoundRobinQueue {
-	return p.queue
+	return p.queueHandler.Queue().(RoundRobinQueue)
 }
 
 // PushUserQueue pushes a stream to the queue belonging to the given user
 // and adds the StreamPlayback object as the parentRef to the pushed stream.
-func (p *StreamPlayback) PushUserQueue(userQueue AggregatableQueue, s stream.Stream) error {
-	if err := userQueue.Push(s); err == nil {
+func (p *StreamPlayback) PushToQueue(userQueue AggregatableQueue, s stream.Stream) error {
+	if err := p.queueHandler.PushToQueue(userQueue, s); err == nil {
 		// mark stream as unreapable while it is aggregated in the queue
 		if !s.Metadata().AddParentRef(p) {
 			log.Printf("INF SOCKET CLIENT duplicate attempt to set parent ref %q to stream %q\n", p.UUID(), s.UUID())
@@ -137,8 +173,8 @@ func (p *StreamPlayback) PushUserQueue(userQueue AggregatableQueue, s stream.Str
 
 // PopUserQueue pops a stream from the queue belonging to the given user
 // and removes the StreamPlayback object from the popped stream's parentRef.
-func (p *StreamPlayback) PopUserQueue(userQueue AggregatableQueue, qi QueueItem) error {
-	err := p.GetQueue().DeleteFromQueue(userQueue, qi)
+func (p *StreamPlayback) PopFromQueue(userQueue AggregatableQueue, qi QueueItem) error {
+	err := p.queueHandler.PopFromQueue(userQueue, qi)
 	if err != nil {
 		return err
 	}
@@ -152,6 +188,7 @@ func (p *StreamPlayback) PopUserQueue(userQueue AggregatableQueue, qi QueueItem)
 	if !s.Metadata().RemoveParentRef(p) {
 		log.Printf("INF SOCKET CLIENT unable to remove parent ref %q from stream %q\n", p.UUID(), s.UUID())
 	}
+
 	return nil
 }
 
@@ -245,7 +282,7 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 
 	return &StreamPlaybackStatus{
-		QueueLength: p.queue.Size(),
+		QueueLength: p.GetQueue().Size(),
 		StartedBy:   p.startedBy,
 		TimerStatus: p.timer.Status(),
 		Stream:      streamCodec,
@@ -258,9 +295,9 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	}
 
 	return &StreamPlayback{
-		id:          id,
-		timer:       NewTimer(),
-		queue:       NewRoundRobinQueue(),
-		lastUpdated: time.Now(),
+		id:           id,
+		timer:        NewTimer(),
+		queueHandler: NewQueueHandler(NewRoundRobinQueue()),
+		lastUpdated:  time.Now(),
 	}
 }

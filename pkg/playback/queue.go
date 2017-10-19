@@ -20,7 +20,57 @@ var (
 	ErrMaxQueueSizeExceeded = fmt.Errorf("you cannot store more than %v items in your queue.", MaxAggregatableQueueItems)
 )
 
-type RoundRobinQueueVisitor func(AggregatableQueue)
+// TODO: break this file out into its own "queue" package
+// have a separate file for the controller.
+type QueueHandler interface {
+	// Clear calls the handled queue's Clear method
+	Clear()
+	// PopFromQueue receives an AggregatableQueue
+	// and a QueueItem belonging to the AggregatableQueue and
+	// attempts to pop that item from the AggregatableQueue.
+	// If at least one parent ref is received, it is removed
+	// from the list of the passed QueueItem's parentRef list.
+	PopFromQueue(AggregatableQueue, QueueItem) error
+	// PushToQueue receives an AggregatableQueue and a QueueItem
+	// and pushes the given QueueItem to the AggregatableQueue.
+	PushToQueue(AggregatableQueue, QueueItem) error
+	// GetQueue returns the handled queue
+	Queue() Queue
+}
+
+// QueueHandlerSpec implements QueueHandler
+type QueueHandlerSpec struct {
+	queue Queue
+}
+
+func (h *QueueHandlerSpec) Clear() {
+	h.queue.Clear()
+}
+
+func (h *QueueHandlerSpec) PopFromQueue(aggQueue AggregatableQueue, item QueueItem) error {
+	rrQueue, ok := h.queue.(RoundRobinQueue)
+	if !ok {
+		return fmt.Errorf("attempt to PopFromQueue on a handled queue that does not implement a RoundRobinQueue")
+	}
+
+	return rrQueue.DeleteFromQueue(aggQueue, item)
+}
+
+func (h *QueueHandlerSpec) PushToQueue(aggQueue AggregatableQueue, item QueueItem) error {
+	return aggQueue.Push(item)
+}
+
+func (h *QueueHandlerSpec) Queue() Queue {
+	return h.queue
+}
+
+func NewQueueHandler(queue Queue) QueueHandler {
+	return &QueueHandlerSpec{
+		queue: queue,
+	}
+}
+
+type QueueVisitor func(QueueItem)
 
 // Queue performs collection operations on a fifo structure
 type Queue interface {
@@ -42,6 +92,9 @@ type Queue interface {
 	Set([]QueueItem)
 	// Size returns the total amount of QueueItems in the queue
 	Size() int
+	// Visit visits each QueueItem aggregated by the RoundRobinQueue and
+	// passes each item to the RoundRobinQueueVisitor.
+	Visit(QueueVisitor)
 }
 
 type ReorderableQueue interface {
@@ -100,15 +153,6 @@ type RoundRobinQueue interface {
 	// PeekItems returns a slice containing the first item
 	// from each aggregated QueueItem in the queue.
 	PeekItems() []QueueItem
-	// VisitAndClear visits each QueueItem and calls the RoundRobinQueueVisitor
-	// passing each AggregatableQueue to the RoundRobinQueueVisitor before
-	// calling the AggregatableQueue's Clear method.
-	// After each AggregatableQueue aggregated by the RoundRobinQueue has been
-	// visited and cleared, the RoundRobinQueue itself will be cleared / reset.
-	VisitAndClear(RoundRobinQueueVisitor)
-	// Visit visits each QueueItem aggregated by the RoundRobinQueue and
-	// passes each item to the RoundRobinQueueVisitor.
-	Visit(RoundRobinQueueVisitor)
 }
 
 // AggregatableQueue is a queue that can be aggregated as a QueueItem
@@ -199,6 +243,12 @@ func (q *QueueSchema) Set(items []QueueItem) {
 
 func (q *QueueSchema) Size() int {
 	return len(q.Items)
+}
+
+func (q *QueueSchema) Visit(visitor QueueVisitor) {
+	for _, queueItem := range q.Items {
+		visitor(queueItem)
+	}
 }
 
 func NewQueue() Queue {
@@ -334,22 +384,7 @@ func (q *RoundRobinQueueSchema) Clear() {
 	q.rrCount = 0
 }
 
-func (q *RoundRobinQueueSchema) VisitAndClear(visitor RoundRobinQueueVisitor) {
-	for _, i := range q.itemsById {
-		agg, ok := i.(AggregatableQueue)
-		if !ok {
-			continue
-		}
-		visitor(agg)
-		agg.Clear()
-	}
-
-	q.ReorderableQueue.Clear()
-	q.itemsById = make(map[string]AggregatableQueue)
-	q.rrCount = 0
-}
-
-func (q *RoundRobinQueueSchema) Visit(visitor RoundRobinQueueVisitor) {
+func (q *RoundRobinQueueSchema) Visit(visitor QueueVisitor) {
 	for _, i := range q.itemsById {
 		agg, ok := i.(AggregatableQueue)
 		if !ok {

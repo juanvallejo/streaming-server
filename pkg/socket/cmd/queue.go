@@ -95,7 +95,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		err = sPlayback.PushUserQueue(userQueue, s)
+		err = sPlayback.PushToQueue(userQueue, s)
 		if err != nil {
 			return "", err
 		}
@@ -195,21 +195,14 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", fmt.Errorf("error: expected user queue for user with id %q to implement playback.AggregatableQueue", userQueueItem.UUID())
 				}
 
-				err := sPlayback.PopUserQueue(userQueue, itemToDelete)
+				err := sPlayback.PopFromQueue(userQueue, itemToDelete)
 				if err != nil {
 					return "", err
 				}
 
 				msg = fmt.Sprintf("deleting stream with url %q from the queue...", args[2])
 			} else {
-				// TODO: make this a helper or a method in sPlayback
-				sPlayback.GetQueue().Visit(func(userQueue playback.AggregatableQueue) {
-					for _, userQueueItem := range userQueue.List() {
-						sPlayback.PopUserQueue(userQueue, userQueueItem)
-					}
-				})
-
-				sPlayback.GetQueue().Clear()
+				sPlayback.ClearQueue()
 			}
 
 			err := sendQueueSyncEvent(user, sPlayback)
@@ -242,18 +235,14 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
 				}
 
-				err := sPlayback.PopUserQueue(userQueue, s)
+				err := sPlayback.PopFromQueue(userQueue, s)
 				if err != nil {
 					return "", err
 				}
 
 				msg = fmt.Sprintf("deleting stream with url %q", s.GetStreamURL())
 			} else {
-				for _, userQueueItem := range userQueue.List() {
-					sPlayback.PopUserQueue(userQueue, userQueueItem)
-				}
-
-				userQueue.Clear()
+				sPlayback.ClearUserQueue(userQueue)
 			}
 
 			err = sendQueueSyncEvent(user, sPlayback)
