@@ -317,6 +317,43 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		c.BroadcastTo("streamsync", res)
 	})
 
+	// this event is received when a client is requesting current stream user information
+	conn.On("request_userlist", func(data connection.MessageDataCodec) {
+		log.Printf("INF SOCKET CLIENT client with id %q requested a userlist", conn.Id())
+
+		c, err := h.clientHandler.GetClient(conn.Id())
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to retrieve user info for connection id %q. No such user associated with id.", conn.Id())
+			return
+		}
+
+		room, exists := c.GetRoom()
+		if !exists {
+			log.Printf("ERR SOCKET CLIENT client with id %q requested a user list for room, but client is not currently in a room. Broadcasting error...", conn.Id())
+			c.BroadcastErrorTo(fmt.Errorf("error: unable to get user list - you are not currently in a room"))
+			return
+		}
+
+		userList := &client.SerializableClientList{}
+		for _, user := range h.clientHandler.GetClients() {
+			uRoom, uRoomExists := user.GetRoom()
+			if !uRoomExists || uRoom != room {
+				continue
+			}
+
+			username, _ := user.GetUsername()
+			room, _ := user.GetRoom()
+
+			userList.Clients = append(userList.Clients, client.SerializableClient{
+				Username: username,
+				Id:       user.GetId(),
+				Room:     room,
+			})
+		}
+
+		c.BroadcastTo("userlist", userList)
+	})
+
 	// this event is received when a client is requesting to update stream state information in the server
 	conn.On("streamdata", func(data connection.MessageDataCodec) {
 		c, err := h.clientHandler.GetClient(conn.Id())

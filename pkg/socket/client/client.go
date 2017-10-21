@@ -23,6 +23,34 @@ type Client struct {
 	room       string
 }
 
+type SerializableClientList struct {
+	Clients []SerializableClient `json:"clients"`
+}
+
+func (s *SerializableClientList) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
+type SerializableClient struct {
+	Username string `json:"username"`
+	Id       string `json:"id"`
+	Room     string `json:"room"`
+}
+
+func (s *SerializableClient) Serialize() ([]byte, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
+}
+
 // Response is a serializable schema representing
 // a response to be sent to the client
 type Response struct {
@@ -51,6 +79,19 @@ func NewClient(conn connection.Connection) *Client {
 		connection: conn,
 		usernames:  make([]string, 0, MAX_USERNAME_HIST),
 	}
+}
+
+func (c *Client) Serialize() ([]byte, error) {
+	username, _ := c.GetUsername()
+	room, _ := c.GetRoom()
+
+	sc := &SerializableClient{
+		Username: username,
+		Id:       c.GetId(),
+		Room:     room,
+	}
+
+	return sc.Serialize()
 }
 
 // GetId returns the connection id for the socket client
