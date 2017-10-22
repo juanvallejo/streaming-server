@@ -44,12 +44,13 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
 			userName, exists := c.GetUsername()
-			if exists {
-				c.BroadcastFrom("info_clientleft", &client.Response{
-					Id:   conn.Id(),
-					From: userName,
-				})
+			if !exists {
+				userName = c.GetId()
 			}
+			c.BroadcastFrom("info_clientleft", &client.Response{
+				Id:   conn.Id(),
+				From: userName,
+			})
 
 			room, exists := c.GetRoom()
 			if exists {
