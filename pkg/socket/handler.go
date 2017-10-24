@@ -45,7 +45,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		if c, err := h.clientHandler.GetClient(conn.Id()); err == nil {
 			userName, exists := c.GetUsername()
 			if !exists {
-				userName = c.GetId()
+				userName = c.UUID()
 			}
 			c.BroadcastFrom("info_clientleft", &client.Response{
 				Id:   conn.Id(),
@@ -61,7 +61,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 					// mark room as reapable.
 					shouldReap := true
 					for _, x := range h.clientHandler.GetClients() {
-						if c.GetId() == x.GetId() {
+						if c.UUID() == x.UUID() {
 							continue
 						}
 						r, e := x.GetRoom()
@@ -184,7 +184,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		res := &client.Response{
-			Id:    c.GetId(),
+			Id:    c.UUID(),
 			From:  "system",
 			Extra: make(map[string]interface{}),
 		}
@@ -228,7 +228,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		res := &client.Response{
-			Id:   c.GetId(),
+			Id:   c.UUID(),
 			From: "system",
 		}
 
@@ -263,7 +263,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		res := &client.Response{
-			Id:   c.GetId(),
+			Id:   c.UUID(),
 			From: "system",
 		}
 
@@ -272,7 +272,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 		if !exists {
-			userQueue = playback.NewAggregatableQueue(c.GetId())
+			userQueue = playback.NewAggregatableQueue(c.UUID())
 		}
 
 		b, err := userQueue.Serialize()
@@ -306,7 +306,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		res := &client.Response{
-			Id: c.GetId(),
+			Id: c.UUID(),
 		}
 
 		err = util.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
@@ -347,7 +347,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 			userList.Clients = append(userList.Clients, client.SerializableClient{
 				Username: username,
-				Id:       user.GetId(),
+				Id:       user.UUID(),
 				Room:     room,
 			})
 		}
@@ -365,20 +365,20 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 		roomName, exists := c.GetRoom()
 		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 			return
 		}
 
 		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.GetId())
+			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.UUID())
 			c.BroadcastErrorTo(fmt.Errorf("Warning: could not update stream playback. No room could be detected."))
 			return
 		}
 
 		s, exists := sPlayback.GetStream()
 		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) sent updated streamdata but no stream could be found associated with the current playback.", c.GetId())
+			log.Printf("ERR SOCKET CLIENT client with id (%q) sent updated streamdata but no stream could be found associated with the current playback.", c.UUID())
 			return
 		}
 
@@ -387,7 +387,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			log.Printf("ERR SOCKET CLIENT unable to convert received data map into json string: %v", err)
 		}
 
-		log.Printf("INF SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.GetId())
+		log.Printf("INF SOCKET CLIENT received streaminfo from client with id (%q). Updating stream information...", c.UUID())
 		err = s.SetInfo(jsonData)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT error updating stream data: %v", err)
@@ -470,7 +470,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 	c.JoinRoom(roomName)
 
 	c.BroadcastFrom("info_clientjoined", &client.Response{
-		Id: c.GetId(),
+		Id: c.UUID(),
 	})
 
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
@@ -505,7 +505,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 							currPlayback.Reset()
 
 							res := &client.Response{
-								Id:   c.GetId(),
+								Id:   c.UUID(),
 								From: "system",
 							}
 
@@ -524,7 +524,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 						// emit updated playback state to client if stream has ended
 						log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT stream has ended after %v seconds.", currentTime)
 						res := &client.Response{
-							Id: c.GetId(),
+							Id: c.UUID(),
 						}
 
 						err = util.SerializeIntoResponse(currPlayback.GetStatus(), &res.Extra)
@@ -547,7 +547,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 			log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
 
 			res := &client.Response{
-				Id: c.GetId(),
+				Id: c.UUID(),
 			}
 
 			err = util.SerializeIntoResponse(currPlayback.GetStatus(), &res.Extra)
@@ -572,7 +572,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 	if exists {
 		log.Printf("INF SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), roomName)
 		res := &client.Response{
-			Id: c.GetId(),
+			Id: c.UUID(),
 		}
 
 		err = util.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
@@ -596,7 +596,7 @@ func (h *Handler) DeregisterClient(conn connection.Connection) error {
 func (h *Handler) getPlaybackFromClient(c *client.Client) (*playback.StreamPlayback, error) {
 	roomName, exists := c.GetRoom()
 	if !exists {
-		return nil, fmt.Errorf("client with id (%q) has no room association. Ignoring streamsync request.", c.GetId())
+		return nil, fmt.Errorf("client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 	}
 
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)

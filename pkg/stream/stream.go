@@ -34,9 +34,9 @@ type StreamCreationSource interface {
 	GetSourceName() string
 }
 
-// StreamParentRef is a composer of Stream
-type StreamParentRef interface {
-	// UUID returns a unique uuid for a parentRef
+// StreamRef is an object that references a Stream object
+type StreamRef interface {
+	// UUID returns a unique uuid for a streamRef
 	UUID() string
 }
 
@@ -71,14 +71,28 @@ type StreamMeta interface {
 	// GetLastUpdated returns a timestamp indicating the last time
 	// a Stream's data was updated
 	GetLastUpdated() time.Time
-	// AddParentRef receives a StreamParentRef and appends it to an internal list of parentRefs
+	// AddParentRef receives a StreamRef and appends it to an internal list of parentRefs
 	// if a duplicate parentRef is given, a boolean false is returned
-	AddParentRef(StreamParentRef) bool
-	// RemoveParentRef receives a StreamParentRef and removes it from an internal list of parentRefs
+	AddParentRef(StreamRef) bool
+	// RemoveParentRef receives a StreamRef and removes it from an internal list of parentRefs
 	// if a given parentRef is not found, a boolean false is returned
-	RemoveParentRef(StreamParentRef) bool
+	RemoveParentRef(StreamRef) bool
 	// GetParentRefs returns a list of all currently stored parentRefs
-	GetParentRefs() []StreamParentRef
+	GetParentRefs() []StreamRef
+	// SetLabelledRef receives a key, value pair, adding the new pair
+	// if the key does not yet exist in the list of labelledRefs, or
+	// replacing the value of the key if the key already exists.
+	// Returns a boolean (true) if a label was successfully added,
+	// or false if the label already exists and its value was replaced.
+	SetLabelledRef(string, StreamRef) bool
+	// RemoveLabelledRef receives a key and removes the corresponding key-value pair
+	// if it exists.
+	// Returns a boolean (false) if a key-value pair did not exist by the given key,
+	// or if the key-value pair exists but it failed to be removed.
+	RemoveLabelledRef(string) bool
+	// GetLabelledRef returns the ref stored under the given key and a boolean true,
+	// or a boolean false if the given key does not exist.
+	GetLabelledRef(string) (StreamRef, bool)
 }
 
 // StreamMetaSchema implements StreamMeta
@@ -87,8 +101,11 @@ type StreamMetaSchema struct {
 	CreationSource StreamCreationSource
 	// LastUpdated is extra info signifying the stream's last data update
 	LastUpdated time.Time `json:"lastUpdated"`
-	// ParentRefs stores a list of StreamParentRef
-	ParentRefs map[string]StreamParentRef
+	// ParentRefs stores a map of objects aggregating this object.
+	ParentRefs map[string]StreamRef
+	// LabelledRefs store an object reference to the
+	// Stream object under a given string label key.
+	LabelledRefs map[string]StreamRef
 }
 
 func (s *StreamMetaSchema) GetCreationSource() StreamCreationSource {
@@ -107,15 +124,15 @@ func (s *StreamMetaSchema) GetLastUpdated() time.Time {
 	return s.LastUpdated
 }
 
-func (s *StreamMetaSchema) GetParentRefs() []StreamParentRef {
-	refs := []StreamParentRef{}
+func (s *StreamMetaSchema) GetParentRefs() []StreamRef {
+	refs := []StreamRef{}
 	for _, r := range s.ParentRefs {
 		refs = append(refs, r)
 	}
 	return refs
 }
 
-func (s *StreamMetaSchema) AddParentRef(ref StreamParentRef) bool {
+func (s *StreamMetaSchema) AddParentRef(ref StreamRef) bool {
 	if _, exists := s.ParentRefs[ref.UUID()]; exists {
 		return false
 	}
@@ -123,7 +140,7 @@ func (s *StreamMetaSchema) AddParentRef(ref StreamParentRef) bool {
 	return true
 }
 
-func (s *StreamMetaSchema) RemoveParentRef(ref StreamParentRef) bool {
+func (s *StreamMetaSchema) RemoveParentRef(ref StreamRef) bool {
 	if _, exists := s.ParentRefs[ref.UUID()]; exists {
 		delete(s.ParentRefs, ref.UUID())
 		return true
@@ -131,11 +148,39 @@ func (s *StreamMetaSchema) RemoveParentRef(ref StreamParentRef) bool {
 	return false
 }
 
+func (s *StreamMetaSchema) SetLabelledRef(key string, value StreamRef) bool {
+	if _, exists := s.LabelledRefs[key]; exists {
+		s.LabelledRefs[key] = value
+		return false
+	}
+
+	s.LabelledRefs[key] = value
+	return true
+}
+
+func (s *StreamMetaSchema) GetLabelledRef(key string) (StreamRef, bool) {
+	if ref, exists := s.LabelledRefs[key]; exists {
+		return ref, true
+	}
+
+	return nil, false
+}
+
+func (s *StreamMetaSchema) RemoveLabelledRef(key string) bool {
+	if _, exists := s.LabelledRefs[key]; exists {
+		delete(s.LabelledRefs, key)
+		return true
+	}
+
+	return false
+}
+
 func NewStreamMeta() StreamMeta {
 	return &StreamMetaSchema{
 		CreationSource: &UnknownStreamCreationSourceSchema{},
 		LastUpdated:    time.Now(),
-		ParentRefs:     make(map[string]StreamParentRef),
+		ParentRefs:     make(map[string]StreamRef),
+		LabelledRefs:   make(map[string]StreamRef),
 	}
 }
 

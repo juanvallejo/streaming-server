@@ -87,15 +87,15 @@ func (c *Client) Serialize() ([]byte, error) {
 
 	sc := &SerializableClient{
 		Username: username,
-		Id:       c.GetId(),
+		Id:       c.UUID(),
 		Room:     room,
 	}
 
 	return sc.Serialize()
 }
 
-// GetId returns the connection id for the socket client
-func (c *Client) GetId() string {
+// UUID returns the connection id for the socket client
+func (c *Client) UUID() string {
 	return c.connection.Id()
 }
 
@@ -104,7 +104,7 @@ func (c *Client) GetId() string {
 func (c *Client) GetSourceName() string {
 	uname, exists := c.GetUsername()
 	if !exists {
-		uname = c.GetId()
+		uname = c.UUID()
 	}
 	return uname
 }
@@ -137,6 +137,17 @@ func (c *Client) GetUsername() (string, bool) {
 	}
 
 	return c.usernames[len(c.usernames)-1], true
+}
+
+// GetUsernameOrId retuens the currently active username for a client
+// or its unique identifier if there is no username history.
+func (c *Client) GetUsernameOrId() string {
+	uName, exists := c.GetUsername()
+	if !exists {
+		uName = c.UUID()
+	}
+
+	return uName
 }
 
 // GetPreviousUsername returns the last active username for a client

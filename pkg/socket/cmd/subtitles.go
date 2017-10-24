@@ -35,12 +35,12 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
-		username = user.GetId()
+		username = user.UUID()
 	}
 
 	userRoom, hasRoom := user.GetRoom()
 	if !hasRoom {
-		log.Printf("SOCKET CLIENT ERR client with id %q attempted to control stream playback with no room assigned", user.GetId())
+		log.Printf("SOCKET CLIENT ERR client with id %q attempted to control stream playback with no room assigned", user.UUID())
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
@@ -55,7 +55,7 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 		}
 
 		user.BroadcastTo("info_subtitles", &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 			Extra: map[string]interface{}{
 				"path": SUBTITLES_FILE_ROOT + subFile,
@@ -68,7 +68,7 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 
 	if args[0] == "off" {
 		user.BroadcastTo("info_subtitles", &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 			Extra: map[string]interface{}{
 				"path": SUBTITLES_FILE_ROOT + subFile,

@@ -23,8 +23,8 @@ func (h *WhoamiCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 	if name, hasName := user.GetUsername(); hasName {
 		return name, nil
 	}
-	log.Printf("SOCKET COMMAND user with id %q requested command %q but has not registered a username yet.", user.GetId(), h.name)
-	return "", fmt.Errorf("user with id %q has not registered with a name yet", user.GetId())
+	log.Printf("SOCKET COMMAND user with id %q requested command %q but has not registered a username yet.", user.UUID(), h.name)
+	return "", fmt.Errorf("user with id %q has not registered with a name yet", user.UUID())
 }
 
 func NewCmdWhoami() SocketCommand {

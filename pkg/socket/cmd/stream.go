@@ -35,18 +35,18 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
-		username = user.GetId()
+		username = user.UUID()
 	}
 
 	userRoom, hasRoom := user.GetRoom()
 	if !hasRoom {
-		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.GetId(), username)
+		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.UUID(), username)
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
 	sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom)
 	if !sPlaybackExists {
-		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.GetId(), username, userRoom)
+		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.UUID(), username, userRoom)
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")
 	}
 
@@ -81,7 +81,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			}
 
 			res := &client.Response{
-				Id:   user.GetId(),
+				Id:   user.UUID(),
 				From: username,
 			}
 
@@ -117,7 +117,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		}
 
 		res := &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 		}
 
@@ -147,7 +147,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		sPlayback.Reset()
 
 		res := &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 		}
 
@@ -173,7 +173,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		sPlayback.Pause()
 
 		res := &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 		}
 
@@ -188,7 +188,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		sPlayback.Stop()
 
 		res := &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 		}
 
@@ -232,7 +232,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		}
 
 		res := &client.Response{
-			Id:   user.GetId(),
+			Id:   user.UUID(),
 			From: username,
 		}
 

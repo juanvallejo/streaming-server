@@ -60,7 +60,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 			prefix := "<br />    "
 			name, hasName := c.GetUsername()
 			if !hasName {
-				output += prefix + "[Not in chat] " + c.GetId()
+				output += prefix + "[Not in chat] " + c.UUID()
 				continue
 			}
 			if userHasName && name == userName {

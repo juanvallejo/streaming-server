@@ -206,7 +206,17 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 		p.stream.Metadata().RemoveParentRef(p)
 	}
 
-	p.UpdateStartedBy(s.Metadata().GetCreationSource().GetSourceName())
+	startedByUser, exists := s.Metadata().GetLabelledRef(p.UUID())
+	if exists {
+		u, ok := startedByUser.(*client.Client)
+		if ok {
+			p.UpdateStartedBy(u.GetUsernameOrId())
+		}
+	} else {
+		log.Printf("INF PLAYBACK unable to find labelled client reference for room with id %v\n", p.UUID())
+		p.UpdateStartedBy("<unknown>")
+	}
+
 	p.stream = s
 	p.stream.Metadata().SetLastUpdated(time.Now())
 	p.SetLastUpdated(time.Now())
@@ -220,7 +230,10 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		callback([]byte{}, false, nil)
-		s.Metadata().SetCreationSource(user)
+
+		// replace labelled reference for the queueing client
+		// with the current playback id as the key.
+		s.Metadata().SetLabelledRef(p.UUID(), user)
 		return s, nil
 	}
 
@@ -230,6 +243,10 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	}
 
 	s.Metadata().SetCreationSource(user)
+
+	// store queueing-user info as a labelled stream reference
+	// using the StreamPlayback's id as a namespaced key
+	s.Metadata().SetLabelledRef(p.UUID(), user)
 
 	// if created new stream, fetch its duration info
 	s.FetchMetadata(func(s stream.Stream, data []byte, err error) {
@@ -258,6 +275,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 type StreamPlaybackStatus struct {
 	QueueLength int          `json:"queueLength"`
 	StartedBy   string       `json:"startedBy"`
+	CreatedBy   string       `json:"createdBy"`
 	Stream      api.ApiCodec `json:"stream"`
 	TimerStatus api.ApiCodec `json:"playback"`
 }
@@ -275,15 +293,18 @@ func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
 // detailing the current playback status
 func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	var streamCodec api.ApiCodec
+	var createdBy string
 
 	s, exists := p.GetStream()
 	if exists {
 		streamCodec = s.Codec()
+		createdBy = s.Metadata().GetCreationSource().GetSourceName()
 	}
 
 	return &StreamPlaybackStatus{
 		QueueLength: p.GetQueue().Size(),
 		StartedBy:   p.startedBy,
+		CreatedBy:   createdBy,
 		TimerStatus: p.timer.Status(),
 		Stream:      streamCodec,
 	}

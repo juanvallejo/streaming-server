@@ -26,7 +26,7 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 
 	prevName, hasPrevName := c.GetUsername()
 
-	log.Printf("INF SOCKET CLIENT client with id %q requested a username update (%q -> %q)", c.GetId(), prevName, username)
+	log.Printf("INF SOCKET CLIENT client with id %q requested a username update (%q -> %q)", c.UUID(), prevName, username)
 
 	if hasPrevName && prevName == username {
 		return fmt.Errorf("error: you already have that username")
@@ -48,11 +48,11 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 			oldName = prevName
 		}
 
-		log.Printf("ERR SOCKET CLIENT failed to update username (%q -> %q) for client with id %q", oldName, username, c.GetId())
+		log.Printf("ERR SOCKET CLIENT failed to update username (%q -> %q) for client with id %q", oldName, username, c.UUID())
 		return err
 	}
 
-	log.Printf("INF SOCKET CLIENT sending \"updateusername\" event to client with id %q (%s)\n", c.GetId(), username)
+	log.Printf("INF SOCKET CLIENT sending \"updateusername\" event to client with id %q (%s)\n", c.UUID(), username)
 	c.BroadcastTo("updateusername", &client.Response{
 		From: username,
 	})
@@ -63,7 +63,7 @@ func UpdateClientUsername(c *client.Client, username string, clientHandler clien
 	}
 
 	c.BroadcastFrom("info_updateusername", &client.Response{
-		Id:   c.GetId(),
+		Id:   c.UUID(),
 		From: username,
 		Extra: map[string]interface{}{
 			"oldUser":   prevName,
@@ -111,7 +111,7 @@ func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
 // matching the client's id.
 // Returns an error if a queue is found but is not aggregatable.
 func GetUserQueue(user *client.Client, queue playback.RoundRobinQueue) (playback.AggregatableQueue, bool, error) {
-	return GetQueueForId(user.GetId(), queue)
+	return GetQueueForId(user.UUID(), queue)
 }
 
 // GetQueueForId receives a playback.RoundRobinQueue and a

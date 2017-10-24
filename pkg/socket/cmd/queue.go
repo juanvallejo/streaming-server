@@ -32,18 +32,18 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
-		username = user.GetId()
+		username = user.UUID()
 	}
 
 	userRoom, hasRoom := user.GetRoom()
 	if !hasRoom {
-		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.GetId(), username)
+		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.UUID(), username)
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
 	sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom)
 	if !sPlaybackExists {
-		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.GetId(), username, userRoom)
+		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.UUID(), username, userRoom)
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")
 	}
 
@@ -60,7 +60,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 		if !exists {
-			userQueue = playback.NewAggregatableQueue(user.GetId())
+			userQueue = playback.NewAggregatableQueue(user.UUID())
 			err := sPlayback.GetQueue().Push(userQueue)
 			if err != nil {
 				return "", err
@@ -122,7 +122,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				return "", err
 			}
 			if !exists {
-				userQueue = playback.NewAggregatableQueue(user.GetId())
+				userQueue = playback.NewAggregatableQueue(user.UUID())
 			}
 
 			status, err := userQueue.Serialize()
@@ -405,7 +405,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		// requested queue exists, migrate items to new queue
-		newQueue := playback.NewAggregatableQueue(user.GetId())
+		newQueue := playback.NewAggregatableQueue(user.UUID())
 		for _, oldItem := range oldUserQueue.List() {
 			newQueue.Push(oldItem)
 		}
@@ -492,11 +492,11 @@ func calculateQueueOrder(sourceIdx, destIdx, length int) ([]int, error) {
 func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
-		username = user.GetId()
+		username = user.UUID()
 	}
 
 	res := &client.Response{
-		Id:   user.GetId(),
+		Id:   user.UUID(),
 		From: username,
 	}
 
@@ -513,11 +513,11 @@ func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback)
 func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
-		username = user.GetId()
+		username = user.UUID()
 	}
 
 	res := &client.Response{
-		Id:   user.GetId(),
+		Id:   user.UUID(),
 		From: username,
 	}
 
@@ -527,7 +527,7 @@ func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayb
 		return fmt.Errorf("error: %v", err)
 	}
 	if !exists {
-		userQueue = playback.NewAggregatableQueue(user.GetId())
+		userQueue = playback.NewAggregatableQueue(user.UUID())
 	}
 
 	err = sockutil.SerializeIntoResponse(userQueue, &res.Extra)
