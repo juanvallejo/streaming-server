@@ -68,6 +68,11 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 
 // Cleanup handles resource cleanup for room resources
 func (p *StreamPlayback) Cleanup() {
+	// remove room ref from the current stream
+	if p.stream != nil {
+		p.stream.Metadata().RemoveLabelledRef(p.UUID())
+	}
+
 	p.timer.Stop()
 	p.timer.callbacks = []TimerCallback{}
 	p.timer = nil
@@ -204,6 +209,7 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 	if p.stream != nil {
 		// remove StreamPlayback object from list of current stream's refs
 		p.stream.Metadata().RemoveParentRef(p)
+		p.stream.Metadata().RemoveLabelledRef(p.UUID())
 	}
 
 	startedByUser, exists := s.Metadata().GetLabelledRef(p.UUID())
