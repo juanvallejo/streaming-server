@@ -55,3 +55,9 @@ func HumanTimeToSeconds(t string) (int, error) {
 
 	return tsecs, nil
 }
+
+// CommandAction returns an "action" string from a given
+// command root and command args.
+func CommandAction(root string, args []string) string {
+	return root + "/" + strings.Join(args, "/")
+}

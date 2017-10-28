@@ -401,7 +401,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", fmt.Errorf("error: %v", err)
 		}
 		if !exists {
-			return "", fmt.Errorf("error: queue with id %q does not exist. Unable to migrate queue.", fromKey)
+			return "", fmt.Errorf("error: queue with id %q does not exist. Unable to migrate queue", fromKey)
 		}
 
 		// requested queue exists, migrate items to new queue
@@ -433,7 +433,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			if err != nil {
 				log.Printf("ERR SOCKET CLIENT old client (target of migrating queue) exists, but an error ocurred emitting user-queue-sync event: %v", err)
 			} else {
-				oldUser.BroadcastSystemMessageTo(fmt.Sprintf("user %q has migrated your queue. It is theirs now.", username))
+				oldUser.BroadcastSystemMessageTo(fmt.Sprintf("user %q has migrated your queue. It is... theirs now.", username))
 			}
 		}
 		return "migrating queue...", nil

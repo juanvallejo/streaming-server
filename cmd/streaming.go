@@ -17,7 +17,7 @@ func main() {
 	flag.Parse()
 
 	socketHandler := socket.NewHandler(
-		cmd.NewHandler(),
+		cmd.NewHandlerWithRBAC(),
 		client.NewHandler(),
 		playback.NewGarbageCollectedHandler(),
 		stream.NewGarbageCollectedHandler(),

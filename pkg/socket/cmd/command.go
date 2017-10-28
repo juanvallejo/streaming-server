@@ -14,8 +14,8 @@ type SocketCommand interface {
 	// command execution, or a string ("status")
 	// containing the return value for the command
 	Execute(SocketCommandHandler, []string, *client.Client, client.SocketClientHandler, playback.StreamPlaybackHandler, stream.StreamHandler) (string, error)
-	// GetName returns the command's unique string identifier
-	GetName() string
+	// Name returns the command's unique string identifier
+	Name() string
 	// GetDescription returns the command's summarized readme
 	GetDescription() string
 	// GetUsage returns the command's help usage
@@ -40,7 +40,7 @@ func (c *Command) Execute(cmdHandler SocketCommandHandler, args []string, client
 	return "", fmt.Errorf("unimplemented command.")
 }
 
-func (c *Command) GetName() string {
+func (c *Command) Name() string {
 	return c.name
 }
 

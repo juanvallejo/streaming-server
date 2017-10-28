@@ -39,7 +39,7 @@ func (h *VolumeCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 	newVol, err := strconv.Atoi(rawVol)
 	if err != nil {
-		return "", fmt.Errorf("error: volume must be an integer, optionally followed by a %q or a %q sign.", "+", "-")
+		return "", fmt.Errorf("error: volume must be an integer, optionally followed by a %q or a %q sign", "+", "-")
 	}
 
 	if len(modifier) > 0 {

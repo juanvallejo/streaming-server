@@ -12,6 +12,7 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
+	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	socketserver "github.com/juanvallejo/streaming-server/pkg/socket/server"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
@@ -80,6 +81,14 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 						sPlayback.SetLastUpdated(time.Now())
 						sPlayback.Reapable = true
 					}
+				}
+			}
+
+			authorizer, exists := h.CommandHandler.Authorizer()
+			if exists {
+				// remove user from authorizer role-bindings
+				for _, b := range authorizer.Bindings() {
+					b.RemoveSubject(c)
 				}
 			}
 		}
@@ -171,11 +180,6 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			}
 			return
 		}
-
-		// TODO: parse message multimedia
-		// if err := h.ReplaceMessageImageURL(data); err != nil {
-		// 	log.Printf("SOCKET CLIENT WARN ")
-		// }
 
 		images, err := h.ParseMessageMedia(messageData)
 		if err != nil {
@@ -559,7 +563,47 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 			c.BroadcastAll("streamsync", res)
 		})
 
+		// if an authorizer exists, bind the "admin" role to the user
+		if authorizer, exists := h.CommandHandler.Authorizer(); exists {
+			adminRole, found := authorizer.Role(rbac.ADMIN_ROLE)
+			if !found {
+				log.Printf("WRN SOCKET CLIENT AUTHZ unable to bind role %q to client %q with id (%s): unable to find role", rbac.ADMIN_ROLE, c.GetUsernameOrId(), c.UUID())
+				return
+			}
+
+			log.Printf("INF SOCKET CLIENT AUTHZ bound role %q to client %q with id (%s)", rbac.ADMIN_ROLE, c.GetUsernameOrId(), c.UUID())
+			authorizer.Bind(adminRole, c)
+		}
+
 		return
+	}
+
+	// since room exists, if an authorizer exists, bind the "user" role to the user
+	if authorizer, exists := h.CommandHandler.Authorizer(); exists {
+		// assign admin role to user if room already exists,
+		// but they are the only client assigned to it
+		roleName := rbac.ADMIN_ROLE
+		for _, existingClient := range h.clientHandler.GetClients() {
+			if existingClient.UUID() == c.UUID() {
+				continue
+			}
+			existingClientRoom, exists := existingClient.GetRoom()
+			if !exists {
+				continue
+			}
+			if existingClientRoom == roomName {
+				roleName = rbac.USER_ROLE
+				break
+			}
+		}
+
+		userRole, found := authorizer.Role(roleName)
+		if found {
+			authorizer.Bind(userRole, c)
+			log.Printf("INF SOCKET CLIENT AUTHZ bound role %q to client %q with id (%s)", roleName, c.GetUsernameOrId(), c.UUID())
+		} else {
+			log.Printf("WRN SOCKET CLIENT AUTHZ unable to bind role %q to client %q with id (%s): unable to find role", roleName, c.GetUsernameOrId(), c.UUID())
+		}
 	}
 
 	// mark playback object as unreapable
