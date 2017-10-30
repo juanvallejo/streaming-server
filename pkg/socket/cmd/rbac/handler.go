@@ -106,6 +106,7 @@ func (a *AuthorizerSpec) Verify(s Subject, r Rule) bool {
 
 func NewAuthorizer() Authorizer {
 	return &AuthorizerSpec{
+		rolesByName:           make(map[string]Role),
 		roleBindingByRoleName: make(map[string]RoleBinding),
 	}
 }

@@ -155,6 +155,15 @@ func addSocketCommands(handler SocketCommandHandler) {
 	handler.AddCommand(NewCmdWhoami())
 }
 
+func resolveCommandAlias(cmdRoot string, commands, aliases map[string]SocketCommand) (SocketCommand, bool) {
+	command, exists := commands[cmdRoot]
+	if !exists {
+		command, exists = aliases[cmdRoot]
+	}
+
+	return command, exists
+}
+
 func addDefaultRoles(authz rbac.Authorizer) {
 	// default rules
 	clearChat := rbac.NewRule("clear the chat", []string{"clear"})
@@ -260,13 +269,4 @@ func addDefaultRoles(authz rbac.Authorizer) {
 	for _, role := range roles {
 		authz.AddRole(role)
 	}
-}
-
-func resolveCommandAlias(cmdRoot string, commands, aliases map[string]SocketCommand) (SocketCommand, bool) {
-	command, exists := commands[cmdRoot]
-	if !exists {
-		command, exists = aliases[cmdRoot]
-	}
-
-	return command, exists
 }

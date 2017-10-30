@@ -11,8 +11,30 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
+const (
+	// A playback state of "NOT_STARTED" indicates that no
+	// streams have been played (or have started to play)
+	// since the room's creation, regardless of any items
+	// that may currently exist in the queue.
+	PLAYBACK_STATE_NOT_STARTED StreamPlaybackState = iota
+
+	// A playback state of "STARTED" indicates that at least
+	// one stream has been queued, and it is either playing,
+	// or has finished playing.
+	PLAYBACK_STATE_STARTED
+
+	// A playback state of "ENDED" indicates that one or more
+	// streams have been queued and played all the way through,
+	// and have now ended, with no additional items left to
+	// play from the queue.
+	PLAYBACK_STATE_ENDED
+)
+
 // PlaybackStreamMetadataCallback is a callback function called once metadata for a stream has been fetched
 type PlaybackStreamMetadataCallback func(data []byte, created bool, err error)
+
+// StreamPlaybackState represents the current state of the room's playback
+type StreamPlaybackState int
 
 // StreamPlayback represents playback status for a given
 // stream - there are one or more StreamPlayback instances
@@ -25,6 +47,10 @@ type StreamPlayback struct {
 	timer        *Timer
 	lastUpdated  time.Time
 
+	// State indicates the current state of the
+	// room's StreamPlayback
+	state StreamPlaybackState
+
 	// Reapable indicates whether the object
 	// is a candidate for being reaped from
 	// a StreamPlayback composer
@@ -33,6 +59,15 @@ type StreamPlayback struct {
 
 func (p *StreamPlayback) UUID() string {
 	return p.id
+}
+
+func (p *StreamPlayback) SetState(s StreamPlaybackState) {
+	p.state = s
+}
+
+// State returns the current stream-playback state
+func (p *StreamPlayback) State() StreamPlaybackState {
+	return p.state
 }
 
 // UpdateStartedBy receives a client and updates the
@@ -86,11 +121,13 @@ func (p *StreamPlayback) Pause() error {
 }
 
 func (p *StreamPlayback) Play() error {
+	p.SetState(PLAYBACK_STATE_STARTED)
 	p.SetLastUpdated(time.Now())
 	return p.timer.Play()
 }
 
 func (p *StreamPlayback) Stop() error {
+	p.SetState(PLAYBACK_STATE_ENDED)
 	p.SetLastUpdated(time.Now())
 	return p.timer.Stop()
 }
@@ -326,5 +363,6 @@ func NewStreamPlayback(id string) *StreamPlayback {
 		timer:        NewTimer(),
 		queueHandler: NewQueueHandler(NewRoundRobinQueue()),
 		lastUpdated:  time.Now(),
+		state:        PLAYBACK_STATE_NOT_STARTED,
 	}
 }
