@@ -7,6 +7,8 @@ import (
 	"time"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
+	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
+	"github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
@@ -41,7 +43,7 @@ type StreamPlaybackState int
 // for every one stream
 type StreamPlayback struct {
 	id           string
-	queueHandler QueueHandler
+	queueHandler queue.QueueHandler
 	stream       stream.Stream
 	startedBy    string
 	timer        *Timer
@@ -105,6 +107,7 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 func (p *StreamPlayback) Cleanup() {
 	// remove room ref from the current stream
 	if p.stream != nil {
+		p.stream.Metadata().RemoveParentRef(p)
 		p.stream.Metadata().RemoveLabelledRef(p.UUID())
 	}
 
@@ -164,14 +167,14 @@ func (p *StreamPlayback) OnTick(callback TimerCallback) {
 func (p *StreamPlayback) ClearQueue() error {
 	var errs []error
 
-	p.queueHandler.Queue().Visit(func(item QueueItem) {
-		userQueue, ok := item.(AggregatableQueue)
+	p.queueHandler.Queue().Visit(func(item queue.QueueItem) {
+		userQueue, ok := item.(queue.AggregatableQueue)
 		if !ok {
 			return
 		}
 
 		for _, userQueueItem := range userQueue.List() {
-			if err := p.PopFromQueue(userQueue, userQueueItem); err != nil {
+			if err := p.ClearQueueItem(userQueue, userQueueItem); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -189,21 +192,21 @@ func (p *StreamPlayback) ClearQueue() error {
 	return fmt.Errorf("%v", errMsg)
 }
 
-func (p *StreamPlayback) ClearUserQueue(userQueue AggregatableQueue) {
+func (p *StreamPlayback) ClearUserQueue(userQueue queue.AggregatableQueue) {
 	for _, userQueueItem := range userQueue.List() {
-		p.PopFromQueue(userQueue, userQueueItem)
+		p.ClearQueueItem(userQueue, userQueueItem)
 	}
 
 	userQueue.Clear()
 }
 
-func (p *StreamPlayback) GetQueue() RoundRobinQueue {
-	return p.queueHandler.Queue().(RoundRobinQueue)
+func (p *StreamPlayback) GetQueue() queue.RoundRobinQueue {
+	return p.queueHandler.Queue().(queue.RoundRobinQueue)
 }
 
 // PushUserQueue pushes a stream to the queue belonging to the given user
 // and adds the StreamPlayback object as the parentRef to the pushed stream.
-func (p *StreamPlayback) PushToQueue(userQueue AggregatableQueue, s stream.Stream) error {
+func (p *StreamPlayback) PushToQueue(userQueue queue.AggregatableQueue, s stream.Stream) error {
 	if err := p.queueHandler.PushToQueue(userQueue, s); err == nil {
 		// mark stream as unreapable while it is aggregated in the queue
 		if !s.Metadata().AddParentRef(p) {
@@ -215,7 +218,7 @@ func (p *StreamPlayback) PushToQueue(userQueue AggregatableQueue, s stream.Strea
 
 // PopUserQueue pops a stream from the queue belonging to the given user
 // and removes the StreamPlayback object from the popped stream's parentRef.
-func (p *StreamPlayback) PopFromQueue(userQueue AggregatableQueue, qi QueueItem) error {
+func (p *StreamPlayback) ClearQueueItem(userQueue queue.AggregatableQueue, qi queue.QueueItem) error {
 	err := p.queueHandler.PopFromQueue(userQueue, qi)
 	if err != nil {
 		return err
@@ -273,6 +276,34 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		callback([]byte{}, false, nil)
+
+		// determine if a labelled reference has already
+		// been set for the room - only return an error
+		// if the labelled ref still has the stream
+		// in their queue.
+		ref, exists := s.Metadata().GetLabelledRef(p.UUID())
+		if exists {
+			if u, ok := ref.(*client.Client); ok {
+				if userQueue, userQueueExists, _ := util.GetUserQueue(u, p.GetQueue()); userQueueExists {
+					exists := false
+					userQueue.Visit(func(item queue.QueueItem) {
+						// determine if item we are trying to reference under a new
+						// user still exists under the previous user's queue.
+						if item.UUID() == s.UUID() {
+							exists = true
+							return
+						}
+					})
+
+					if exists {
+						if ref.UUID() == user.UUID() {
+							return nil, fmt.Errorf("error: that stream already exists in your queue")
+						}
+						return nil, fmt.Errorf("error: that stream has already added to the queue of another user in your room")
+					}
+				}
+			}
+		}
 
 		// replace labelled reference for the queueing client
 		// with the current playback id as the key.
@@ -361,7 +392,7 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	return &StreamPlayback{
 		id:           id,
 		timer:        NewTimer(),
-		queueHandler: NewQueueHandler(NewRoundRobinQueue()),
+		queueHandler: queue.NewQueueHandler(queue.NewRoundRobinQueue()),
 		lastUpdated:  time.Now(),
 		state:        PLAYBACK_STATE_NOT_STARTED,
 	}

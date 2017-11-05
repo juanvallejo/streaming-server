@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/validation"
 )
@@ -18,7 +17,7 @@ import (
 const ROOM_URL_SEGMENT = "/v/"
 
 // TODO: make this function concurrency-safe
-func UpdateClientUsername(c *client.Client, username string, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler) error {
+func UpdateClientUsername(c *client.Client, username string, clientHandler client.SocketClientHandler) error {
 	err := validation.ValidateClientUsername(username)
 	if err != nil {
 		return err
@@ -104,32 +103,4 @@ func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
 	}
 
 	return json.Unmarshal(b, dest)
-}
-
-// GetUserQueue receives a playback.RoundRobinQueue and a
-// client.Client and attempts to find an aggregated queue
-// matching the client's id.
-// Returns an error if a queue is found but is not aggregatable.
-func GetUserQueue(user *client.Client, queue playback.RoundRobinQueue) (playback.AggregatableQueue, bool, error) {
-	return GetQueueForId(user.UUID(), queue)
-}
-
-// GetQueueForId receives a playback.RoundRobinQueue and a
-// unique id and attempts to find an aggregated queue
-// matching the given id.
-// Returns an error if a queue is found but is not aggregatable.
-func GetQueueForId(id string, queue playback.RoundRobinQueue) (playback.AggregatableQueue, bool, error) {
-	for _, q := range queue.List() {
-		if q.UUID() == id {
-			userQueue, ok := q.(playback.AggregatableQueue)
-			if !ok {
-				return nil, false, fmt.Errorf("expected user queue to implement playback.AggregatableQueue")
-			}
-
-			return userQueue, true, nil
-		}
-	}
-
-	// queue not found, return empty one
-	return nil, false, nil
 }

@@ -1,4 +1,4 @@
-package playback
+package queue
 
 import (
 	"encoding/json"

@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
+	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
+	playbackutil "github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	sockutil "github.com/juanvallejo/streaming-server/pkg/socket/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
@@ -55,12 +57,12 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
-		userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+		userQueue, exists, err := playbackutil.GetUserQueue(user, sPlayback.GetQueue())
 		if err != nil {
 			return "", err
 		}
 		if !exists {
-			userQueue = playback.NewAggregatableQueue(user.UUID())
+			userQueue = queue.NewAggregatableQueue(user.UUID())
 			err := sPlayback.GetQueue().Push(userQueue)
 			if err != nil {
 				return "", err
@@ -68,8 +70,8 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		// do not create and push stream if user queue is at its storage limit
-		if userQueue.Size() >= playback.MaxAggregatableQueueItems {
-			return "", playback.ErrMaxQueueSizeExceeded
+		if userQueue.Size() >= queue.MaxAggregatableQueueItems {
+			return "", queue.ErrMaxQueueSizeExceeded
 		}
 
 		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
@@ -92,6 +94,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			}
 		}(user, sPlayback))
 		if err != nil {
+			user.BroadcastErrorTo(err)
 			return "", err
 		}
 
@@ -155,12 +158,12 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		if args[1] == "mine" || args[1] == "me" {
-			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+			userQueue, exists, err := playbackutil.GetUserQueue(user, sPlayback.GetQueue())
 			if err != nil {
 				return "", err
 			}
 			if !exists {
-				userQueue = playback.NewAggregatableQueue(user.UUID())
+				userQueue = queue.NewAggregatableQueue(user.UUID())
 			}
 
 			status, err := userQueue.Serialize()
@@ -210,7 +213,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			// if 3 agrs, treat last arg as url of stream to delete
 			// from the current round-robin lineup
 			if len(args) > 2 {
-				var itemToDelete playback.QueueItem
+				var itemToDelete queue.QueueItem
 				found := false
 				userQueueIdx := -1
 
@@ -228,12 +231,12 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 				queues := sPlayback.GetQueue().List()
 				userQueueItem := queues[userQueueIdx]
-				userQueue, ok := userQueueItem.(playback.AggregatableQueue)
+				userQueue, ok := userQueueItem.(queue.AggregatableQueue)
 				if !ok {
 					return "", fmt.Errorf("error: expected user queue for user with id %q to implement playback.AggregatableQueue", userQueueItem.UUID())
 				}
 
-				err := sPlayback.PopFromQueue(userQueue, itemToDelete)
+				err := sPlayback.ClearQueueItem(userQueue, itemToDelete)
 				if err != nil {
 					return "", err
 				}
@@ -256,7 +259,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 		// clear a single client's queue
 		if args[1] == "mine" || args[1] == "me" {
-			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+			userQueue, exists, err := playbackutil.GetUserQueue(user, sPlayback.GetQueue())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
@@ -273,7 +276,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return "", fmt.Errorf("The provided stream with id %q does not exist in your queue", args[2])
 				}
 
-				err := sPlayback.PopFromQueue(userQueue, s)
+				err := sPlayback.ClearQueueItem(userQueue, s)
 				if err != nil {
 					return "", err
 				}
@@ -383,7 +386,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		if args[1] == "mine" {
 			streamId := args[2]
 
-			userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+			userQueue, exists, err := playbackutil.GetUserQueue(user, sPlayback.GetQueue())
 			if err != nil {
 				return "", fmt.Errorf("error: %v", err)
 			}
@@ -434,7 +437,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		fromKey := args[1]
-		oldUserQueue, exists, err := sockutil.GetQueueForId(fromKey, sPlayback.GetQueue())
+		oldUserQueue, exists, err := playbackutil.GetQueueForId(fromKey, sPlayback.GetQueue())
 		if err != nil {
 			return "", fmt.Errorf("error: %v", err)
 		}
@@ -443,7 +446,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		}
 
 		// requested queue exists, migrate items to new queue
-		newQueue := playback.NewAggregatableQueue(user.UUID())
+		newQueue := queue.NewAggregatableQueue(user.UUID())
 		for _, oldItem := range oldUserQueue.List() {
 			newQueue.Push(oldItem)
 		}
@@ -560,12 +563,12 @@ func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayb
 	}
 
 	// find queue item with id
-	userQueue, exists, err := sockutil.GetUserQueue(user, sPlayback.GetQueue())
+	userQueue, exists, err := playbackutil.GetUserQueue(user, sPlayback.GetQueue())
 	if err != nil {
 		return fmt.Errorf("error: %v", err)
 	}
 	if !exists {
-		userQueue = playback.NewAggregatableQueue(user.UUID())
+		userQueue = queue.NewAggregatableQueue(user.UUID())
 	}
 
 	err = sockutil.SerializeIntoResponse(userQueue, &res.Extra)
@@ -582,7 +585,7 @@ func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayb
 //
 // Breadth-first search variant of this implementation:
 // https://play.golang.org/p/48WvSd0UaB
-func queueItemIndex(id string, items []playback.QueueItem) (int, bool, error) {
+func queueItemIndex(id string, items []queue.QueueItem) (int, bool, error) {
 	for idx, qItem := range items {
 		if qItem.UUID() == id {
 			return idx, true, nil

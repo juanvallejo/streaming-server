@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
+	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
+	playbackutil "github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
@@ -126,7 +128,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		err = util.UpdateClientUsername(c, username, h.clientHandler, h.PlaybackHandler)
+		err = util.UpdateClientUsername(c, username, h.clientHandler)
 		if err != nil {
 			log.Printf("ERR SOCKET CLIENT %v. Broadcasting as \"info_clienterror\" event", err)
 			c.BroadcastErrorTo(err)
@@ -271,12 +273,12 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			From: "system",
 		}
 
-		userQueue, exists, err := util.GetUserQueue(c, sPlayback.GetQueue())
+		userQueue, exists, err := playbackutil.GetUserQueue(c, sPlayback.GetQueue())
 		if err != nil {
 			return
 		}
 		if !exists {
-			userQueue = playback.NewAggregatableQueue(c.UUID())
+			userQueue = queue.NewAggregatableQueue(c.UUID())
 		}
 
 		b, err := userQueue.Serialize()

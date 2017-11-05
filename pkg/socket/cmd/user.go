@@ -33,7 +33,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 			return h.usage, nil
 		}
 
-		err := util.UpdateClientUsername(user, args[1], clientHandler, playbackHandler)
+		err := util.UpdateClientUsername(user, args[1], clientHandler)
 		if err != nil {
 			return "", err
 		}
