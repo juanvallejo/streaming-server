@@ -37,7 +37,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		username = user.UUID()
 	}
 
-	userRoom, hasRoom := user.GetRoom()
+	userRoom, hasRoom := user.Namespace()
 	if !hasRoom {
 		log.Printf("ERR SOCKET CLIENT client with id %q (%s) attempted to control stream playback with no room assigned", user.UUID(), username)
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")

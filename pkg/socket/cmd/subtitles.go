@@ -38,10 +38,10 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 		username = user.UUID()
 	}
 
-	userRoom, hasRoom := user.GetRoom()
+	userRoom, hasRoom := user.Namespace()
 	if !hasRoom {
 		log.Printf("SOCKET CLIENT ERR client with id %q attempted to control stream playback with no room assigned", user.UUID())
-		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
+		return "", fmt.Errorf("error: you must be in a stream to control stream playback")
 	}
 
 	currentDir := util.GetCurrentDirectory()

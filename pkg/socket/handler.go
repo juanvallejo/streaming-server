@@ -14,7 +14,6 @@ import (
 	playbackutil "github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd"
-	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	socketserver "github.com/juanvallejo/streaming-server/pkg/socket/server"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
@@ -55,7 +54,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				From: userName,
 			})
 
-			room, exists := c.GetRoom()
+			room, exists := c.Namespace()
 			if exists {
 				sPlayback, sPlaybackExists := h.PlaybackHandler.GetStreamPlayback(room)
 				if sPlaybackExists {
@@ -63,18 +62,19 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 					// check if at least one other client is in that room. If not,
 					// mark room as reapable.
 					shouldReap := true
-					for _, x := range h.clientHandler.GetClients() {
+
+					for _, conn := range c.Connections() {
+						x, err := h.clientHandler.GetClient(conn.Id())
+						if err != nil {
+							continue
+						}
+
 						if c.UUID() == x.UUID() {
 							continue
 						}
-						r, e := x.GetRoom()
-						if !e {
-							continue
-						}
-						if r == room {
-							shouldReap = false
-							break
-						}
+
+						shouldReap = false
+						break
 					}
 
 					if shouldReap {
@@ -86,8 +86,8 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				}
 			}
 
-			authorizer, exists := h.CommandHandler.Authorizer()
-			if exists {
+			authorizer := h.CommandHandler.Authorizer()
+			if authorizer != nil {
 				// remove user from authorizer role-bindings
 				for _, b := range authorizer.Bindings() {
 					b.RemoveSubject(c)
@@ -334,7 +334,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		room, exists := c.GetRoom()
+		room, exists := c.Namespace()
 		if !exists {
 			log.Printf("ERR SOCKET CLIENT client with id %q requested a user list for room, but client is not currently in a room. Broadcasting error...", conn.Id())
 			c.BroadcastErrorTo(fmt.Errorf("error: unable to get user list - you are not currently in a room"))
@@ -342,15 +342,13 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 		}
 
 		userList := &client.SerializableClientList{}
-		for _, user := range h.clientHandler.GetClients() {
-			uRoom, uRoomExists := user.GetRoom()
-			if !uRoomExists || uRoom != room {
+		for _, conn := range c.Connections() {
+			user, err := h.clientHandler.GetClient(conn.Id())
+			if err != nil {
 				continue
 			}
 
 			username, _ := user.GetUsername()
-			room, _ := user.GetRoom()
-
 			userList.Clients = append(userList.Clients, client.SerializableClient{
 				Username: username,
 				Id:       user.UUID(),
@@ -369,7 +367,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		roomName, exists := c.GetRoom()
+		roomName, exists := c.Namespace()
 		if !exists {
 			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 			return
@@ -473,7 +471,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 	log.Printf("INF SOCKET CLIENT assigning client to room with name %q", roomName)
 
 	c := h.clientHandler.CreateClient(conn)
-	c.JoinRoom(roomName)
+	c.SetNamespace(roomName)
 
 	c.BroadcastFrom("info_clientjoined", &client.Response{
 		Id: c.UUID(),
@@ -565,47 +563,19 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 			c.BroadcastAll("streamsync", res)
 		})
 
-		// if an authorizer exists, bind the "admin" role to the user
-		if authorizer, exists := h.CommandHandler.Authorizer(); exists {
-			adminRole, found := authorizer.Role(rbac.ADMIN_ROLE)
-			if !found {
-				log.Printf("WRN SOCKET CLIENT AUTHZ unable to bind role %q to client %q with id (%s): unable to find role", rbac.ADMIN_ROLE, c.GetUsernameOrId(), c.UUID())
-				return
-			}
-
-			log.Printf("INF SOCKET CLIENT AUTHZ bound role %q to client %q with id (%s)", rbac.ADMIN_ROLE, c.GetUsernameOrId(), c.UUID())
-			authorizer.Bind(adminRole, c)
+		// assign default role to the client - should be "admin" since room was just created
+		err = util.BindDefaultUserRoles(h.CommandHandler.Authorizer(), h.clientHandler, c)
+		if err != nil {
+			log.Printf("WRN SOCKET CLIENT AUTHZ %v", err)
 		}
 
 		return
 	}
 
-	// since room exists, if an authorizer exists, bind the "user" role to the user
-	if authorizer, exists := h.CommandHandler.Authorizer(); exists {
-		// assign admin role to user if room already exists,
-		// but they are the only client assigned to it
-		roleName := rbac.ADMIN_ROLE
-		for _, existingClient := range h.clientHandler.GetClients() {
-			if existingClient.UUID() == c.UUID() {
-				continue
-			}
-			existingClientRoom, exists := existingClient.GetRoom()
-			if !exists {
-				continue
-			}
-			if existingClientRoom == roomName {
-				roleName = rbac.USER_ROLE
-				break
-			}
-		}
-
-		userRole, found := authorizer.Role(roleName)
-		if found {
-			authorizer.Bind(userRole, c)
-			log.Printf("INF SOCKET CLIENT AUTHZ bound role %q to client %q with id (%s)", roleName, c.GetUsernameOrId(), c.UUID())
-		} else {
-			log.Printf("WRN SOCKET CLIENT AUTHZ unable to bind role %q to client %q with id (%s): unable to find role", roleName, c.GetUsernameOrId(), c.UUID())
-		}
+	// assign default roles to the client based on the room count
+	err = util.BindDefaultUserRoles(h.CommandHandler.Authorizer(), h.clientHandler, c)
+	if err != nil {
+		log.Printf("WRN SOCKET CLIENT AUTHZ %v", err)
 	}
 
 	// mark playback object as unreapable
@@ -640,14 +610,14 @@ func (h *Handler) DeregisterClient(conn connection.Connection) error {
 }
 
 func (h *Handler) getPlaybackFromClient(c *client.Client) (*playback.StreamPlayback, error) {
-	roomName, exists := c.GetRoom()
+	roomName, exists := c.Namespace()
 	if !exists {
 		return nil, fmt.Errorf("client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 	}
 
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
 	if !exists {
-		return nil, fmt.Errorf("Warning: could not update stream playback. No room could be detected.")
+		return nil, fmt.Errorf("warning: could not update stream playback. No room could be detected")
 	}
 
 	return sPlayback, nil

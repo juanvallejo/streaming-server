@@ -20,7 +20,6 @@ var RESERVED_USERNAMES = map[string]bool{
 type Client struct {
 	connection connection.Connection
 	usernames  []string // stores MAX_USERNAME_HIST usernames; tail represents current username
-	room       string
 }
 
 type SerializableClientList struct {
@@ -83,7 +82,7 @@ func NewClient(conn connection.Connection) *Client {
 
 func (c *Client) Serialize() ([]byte, error) {
 	username, _ := c.GetUsername()
-	room, _ := c.GetRoom()
+	room, _ := c.Namespace()
 
 	sc := &SerializableClient{
 		Username: username,
@@ -169,7 +168,7 @@ func (c *Client) BroadcastErrorTo(err error) {
 }
 
 func (c *Client) BroadcastAll(evt string, data connection.MessageDataCodec) {
-	room, inRoom := c.GetRoom()
+	room, inRoom := c.Namespace()
 	if !inRoom {
 		panic("broadcast attempt from client without room")
 	}
@@ -184,7 +183,7 @@ func (c *Client) BroadcastTo(evt string, data connection.MessageDataCodec) {
 }
 
 func (c *Client) BroadcastFrom(evt string, data connection.MessageDataCodec) {
-	room, inRoom := c.GetRoom()
+	room, inRoom := c.Namespace()
 	if !inRoom {
 		panic("broadcast attempt from client without room")
 	}
@@ -288,27 +287,42 @@ func (c *Client) UsernameEqualsPrevious(c2 *Client) bool {
 	return false
 }
 
-// JoinRoom assigns a client to a channel named after their current
-// fully qualified room name.
-func (c *Client) JoinRoom(room string) {
-	c.connection.Join(room)
-	c.room = room
+// SetNamespace assigns a client to a channel named after their current
+// fully qualified namespace.
+func (c *Client) SetNamespace(ns string) {
+	c.connection.Join(ns)
 }
 
-// GetRoom returns the name of the channel / room
-// the socket is currently in, or boolean false if
-// the socket has not been assigned to a room yet
-func (c *Client) GetRoom() (string, bool) {
-	if len(c.room) == 0 {
-		return c.room, false
+func (c *Client) UnsetNamespace() {
+	ns, exists := c.Namespace()
+	if !exists {
+		return
 	}
 
-	return c.room, true
+	c.connection.Leave(ns)
 }
 
-// GetConnection returns the socket connection for the current client
-func (c *Client) GetConnection() connection.Connection {
+// Namespace returns the name of the channel / room
+// the socket is currently in, or boolean false if
+// the socket has not been assigned to a room yet
+func (c *Client) Namespace() (string, bool) {
+	ns := c.connection.Namespace()
+	return ns, len(ns) > 0
+}
+
+// Connection returns the socket connection for the current client
+func (c *Client) Connection() connection.Connection {
 	return c.connection
+}
+
+// Connections returns the socket connections that are in the same namespace as the client
+func (c *Client) Connections() []connection.Connection {
+	_, exists := c.Namespace()
+	if !exists {
+		return []connection.Connection{}
+	}
+
+	return c.connection.Connections()
 }
 
 func getBroadcastMessage(evt string, codec connection.MessageDataCodec) []byte {

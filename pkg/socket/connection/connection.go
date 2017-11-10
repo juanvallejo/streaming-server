@@ -65,6 +65,8 @@ type Connection interface {
 	// BroadcastFrom behaves like Broadcast, except the connection id provided
 	// is skipped from any effects or mutations taken by the handler's method.
 	BroadcastFrom(string, string, []byte)
+	// Connections returns socket connections that are in the same namespace as the connection
+	Connections() []Connection
 	// Emit iterates through all stored SocketEventCallback functions and calls
 	// them with the given Message argument.
 	Emit(string, MessageDataCodec)
@@ -75,11 +77,16 @@ type Connection interface {
 	// TODO: add support for multiple namespaces per connection
 	// Leave leaves any namespace the connection has been assigned to
 	Leave(string)
+	// Namespace returns the namespace the connection has been bound to
+	// or an empty string if the connection has not yet been bound.
+	Namespace() string
 	// On receives a key and a SocketEventCallback and pushes the SocketEventCallback
 	// to a list of SocketEventCallback functions mapped to the given key
 	On(string, SocketEventCallback)
 	// ReadMessage reads a text message from the connection
 	ReadMessage() (int, []byte, error)
+	// ResponseWriter returns the saved http.ResponseWriter for this connection
+	ResponseWriter() http.ResponseWriter
 	// Request returns the saved http.Request for this connection
 	Request() *http.Request
 	// Send receives an array of bytes to send to the connection
@@ -92,10 +99,12 @@ type Connection interface {
 type SocketConn struct {
 	*websocket.Conn
 
-	callbacks map[string][]SocketEventCallback
-	connId    string
-	httpReq   *http.Request
-	nsHandler Namespace
+	callbacks  map[string][]SocketEventCallback
+	connId     string
+	respWriter http.ResponseWriter
+	httpReq    *http.Request
+	nsHandler  Namespace
+	ns         string
 }
 
 func (c *SocketConn) On(eventName string, callback SocketEventCallback) {
@@ -134,12 +143,30 @@ func (c *SocketConn) Broadcast(roomName, eventName string, data []byte) {
 	c.nsHandler.Broadcast(websocket.TextMessage, roomName, eventName, data)
 }
 
+func (c *SocketConn) Connections() []Connection {
+	if len(c.ns) == 0 {
+		return []Connection{}
+	}
+
+	conns, exists := c.nsHandler.Namespace(c.ns)
+	if !exists {
+		return []Connection{}
+	}
+
+	return conns
+}
+
 func (c *SocketConn) Join(roomName string) {
+	c.ns = roomName
 	c.nsHandler.AddToNamespace(roomName, c)
 }
 
 func (c *SocketConn) Leave(roomName string) {
 	c.nsHandler.RemoveFromNamespace(roomName, c)
+}
+
+func (c *SocketConn) Namespace() string {
+	return c.ns
 }
 
 func (c *SocketConn) ReadMessage() (int, []byte, error) {
@@ -150,11 +177,15 @@ func (c *SocketConn) WriteMessage(messageType int, data []byte) error {
 	return c.Conn.WriteMessage(messageType, data)
 }
 
+func (c *SocketConn) ResponseWriter() http.ResponseWriter {
+	return c.respWriter
+}
+
 func (c *SocketConn) Request() *http.Request {
 	return c.httpReq
 }
 
-func NewConnection(nsHandler Namespace, ws *websocket.Conn, r *http.Request) Connection {
+func NewConnection(nsHandler Namespace, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
 	// generate a uuid for this connection, or panic
 	uuid, err := GenerateUUID()
 	if err != nil {
@@ -164,9 +195,10 @@ func NewConnection(nsHandler Namespace, ws *websocket.Conn, r *http.Request) Con
 	return &SocketConn{
 		Conn: ws,
 
-		httpReq:   r,
-		connId:    uuid,
-		callbacks: make(map[string][]SocketEventCallback),
-		nsHandler: nsHandler,
+		respWriter: w,
+		httpReq:    r,
+		connId:     uuid,
+		callbacks:  make(map[string][]SocketEventCallback),
+		nsHandler:  nsHandler,
 	}
 }

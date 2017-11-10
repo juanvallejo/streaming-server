@@ -11,6 +11,9 @@ type Namespace interface {
 	// Connection to the specified namespace. If the specified namespace does
 	// not exist, a new one is created.
 	AddToNamespace(string, Connection)
+	// Namespace receives a namespace id and returns the corresponding connections
+	// assigned to it, or a boolean (false) if it does not exist.
+	Namespace(string) ([]Connection, bool)
 	// RemoveFromNamespace receives a namespace id and a Connection and removes
 	// the Connection from the specified namespace. If the namespace does not exist,
 	// a no-op occurs. If removing the Connection from the namespace results in an empty
@@ -39,6 +42,11 @@ func (h *ConnNamespace) AddToNamespace(ns string, conn Connection) {
 	}
 
 	h.connsByNamespace[ns] = append(h.connsByNamespace[ns], conn)
+}
+
+func (h *ConnNamespace) Namespace(ns string) ([]Connection, bool) {
+	conns, exist := h.connsByNamespace[ns]
+	return conns, exist
 }
 
 func (h *ConnNamespace) RemoveFromNamespace(ns string, conn Connection) {

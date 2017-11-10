@@ -14,7 +14,7 @@ import (
 type SocketCommandHandler interface {
 	// returns an Authorizer if one has been set by a
 	// command handler supporting access control.
-	Authorizer() (rbac.Authorizer, bool)
+	Authorizer() rbac.Authorizer
 	// AddCommand receives a SocketCommand and adds it to
 	// an internal map of commands
 	AddCommand(SocketCommand)
@@ -34,8 +34,8 @@ type Handler struct {
 	aliases  map[string]SocketCommand
 }
 
-func (h *Handler) Authorizer() (rbac.Authorizer, bool) {
-	return nil, false
+func (h *Handler) Authorizer() rbac.Authorizer {
+	return nil
 }
 
 // AddCommand panics if a given command has already been added
@@ -102,8 +102,8 @@ type HandlerWithRBAC struct {
 	AccessController rbac.Authorizer
 }
 
-func (c *HandlerWithRBAC) Authorizer() (rbac.Authorizer, bool) {
-	return c.AccessController, c.AccessController != nil
+func (c *HandlerWithRBAC) Authorizer() rbac.Authorizer {
+	return c.AccessController
 }
 
 func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {

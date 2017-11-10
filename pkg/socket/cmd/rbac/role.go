@@ -1,11 +1,5 @@
 package rbac
 
-const (
-	VIEWER_ROLE = "viewer"
-	USER_ROLE   = "user"
-	ADMIN_ROLE  = "admin"
-)
-
 // Role is an object that
 type Role interface {
 	// AddRule composes a new Rule in the Role.

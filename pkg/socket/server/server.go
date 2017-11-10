@@ -64,11 +64,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := websocket.Upgrade(w, r, w.Header(), MAX_READ_BUF_SIZE, MAX_WRITE_BUF_SIZE)
 	if err != nil {
-		log.Printf("ERR SOCKET SERVER unable to upgrade connection for %q: %v", r.URL.String(), err)
+		log.Printf("ERR SOCKET SERVER unable to upgrade connection for %q: %v\n", r.URL.String(), err)
 		return
 	}
 
-	socketConn := s.handler.NewConnection(conn, r)
+	socketConn := s.handler.NewConnection(conn, w, r)
 	s.Emit("connection", socketConn)
 
 	s.handler.Handle(socketConn)

@@ -42,7 +42,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 	}
 
-	roomName, exists := user.GetRoom()
+	_, exists := user.Namespace()
 	if !exists {
 		return "", fmt.Errorf("no room associated with user")
 	}
@@ -51,9 +51,9 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 		userName, userHasName := user.GetUsername()
 
 		output := "All users in the current room:<br />"
-		for _, c := range clientHandler.GetClients() {
-			cRoomName, cRoomExists := c.GetRoom()
-			if !cRoomExists || cRoomName != roomName {
+		for _, conn := range user.Connections() {
+			c, err := clientHandler.GetClient(conn.Id())
+			if err != nil {
 				continue
 			}
 

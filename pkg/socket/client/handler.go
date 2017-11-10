@@ -19,8 +19,8 @@ type SocketClientHandler interface {
 	GetClient(string) (*Client, error)
 	// GetClientSize returns the amount of Client instances saved in the internal map
 	GetClientSize() int
-	// GetClients returns a slice of Client instances saved in the internal map
-	GetClients() []*Client
+	// Clients returns a slice of Client instances saved in the internal map
+	Clients() []*Client
 }
 
 // Handler implements ClientHandler
@@ -38,10 +38,7 @@ func (h *Handler) CreateClient(socket connection.Connection) *Client {
 func (h *Handler) DestroyClient(socket connection.Connection) error {
 	id := socket.Id()
 	if c, ok := h.clientsById[id]; ok {
-		if room, inRoom := c.GetRoom(); inRoom {
-			socket.Leave(room)
-		}
-
+		c.UnsetNamespace()
 		delete(h.clientsById, id)
 		return nil
 	}
@@ -55,7 +52,7 @@ func (h *Handler) GetClient(id string) (*Client, error) {
 	return nil, fmt.Errorf("client with id %q does not exist", id)
 }
 
-func (h *Handler) GetClients() []*Client {
+func (h *Handler) Clients() []*Client {
 	clients := make([]*Client, 0, len(h.clientsById))
 	for _, c := range h.clientsById {
 		clients = append(clients, c)

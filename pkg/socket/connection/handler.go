@@ -13,7 +13,7 @@ import (
 type Handler interface {
 	// NewConnection instantiates a new Connection
 	// Returns the newly created Connection
-	NewConnection(*websocket.Conn, *http.Request) Connection
+	NewConnection(*websocket.Conn, http.ResponseWriter, *http.Request) Connection
 	// GetConnection receives a Connection uuid, and returns the
 	// associated connection. Returns a boolean false if no Connection
 	// exists by the given uuid.
@@ -31,8 +31,8 @@ type ConnHandler struct {
 	connsById map[string]Connection
 }
 
-func (h *ConnHandler) NewConnection(ws *websocket.Conn, r *http.Request) Connection {
-	c := NewConnection(h.nsHandler, ws, r)
+func (h *ConnHandler) NewConnection(ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
+	c := NewConnection(h.nsHandler, ws, w, r)
 	return c
 }
 
