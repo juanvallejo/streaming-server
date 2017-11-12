@@ -56,7 +56,7 @@ func (h *ConnNamespace) RemoveFromNamespace(ns string, conn Connection) {
 	}
 
 	for idx, c := range conns {
-		if c.Id() == conn.Id() {
+		if c.UUID() == conn.UUID() {
 			h.connsByNamespace[ns] = append(conns[0:idx], conns[idx+1:]...)
 			if len(h.connsByNamespace[ns]) == 0 {
 				delete(h.connsByNamespace, ns)
@@ -65,7 +65,7 @@ func (h *ConnNamespace) RemoveFromNamespace(ns string, conn Connection) {
 		}
 	}
 
-	log.Printf("WRN SOCKET CONN NAMESPACE attempt to remove connection (%q) from namespace (%q) but connection was not found.", conn.Id(), ns)
+	log.Printf("WRN SOCKET CONN NAMESPACE attempt to remove connection (%q) from namespace (%q) but connection was not found.", conn.UUID(), ns)
 }
 
 func (h *ConnNamespace) Broadcast(messageType int, ns, eventName string, data []byte) {
@@ -86,7 +86,7 @@ func (h *ConnNamespace) BroadcastFrom(messageType int, connId, ns, eventName str
 	}
 
 	for _, c := range conns {
-		if c.Id() == connId {
+		if c.UUID() == connId {
 			continue
 		}
 		c.WriteMessage(messageType, data)

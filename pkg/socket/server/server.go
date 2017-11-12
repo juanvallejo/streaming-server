@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
-
 	"github.com/gorilla/websocket"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
+	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 )
 
 const (
+	DEFAULT_NAMESPACE = "lobby"
+
 	MAX_READ_BUF_SIZE  = 1024
 	MAX_WRITE_BUF_SIZE = 1024
 )
@@ -54,6 +57,7 @@ func (s *Server) Emit(eventName string, conn connection.Connection) {
 	}
 }
 
+// ServeHTTP handles a connection upgrade request, and handles socket connection admission
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origin := getClientOrigin(r)
 	log.Printf("INF SOCKET handling socket request for ref %q\n", origin)
@@ -62,22 +66,57 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", origin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
+	namespace, err := util.NamespaceFromRequest(r)
+	if err != nil {
+		namespace = DEFAULT_NAMESPACE
+		log.Printf("ERR SOCKET SERVER unable to obtain a room. Defaulting to %v\n", namespace)
+	}
+
+	uuid, err := connection.GenerateUUID()
+	if err != nil {
+		log.Printf("ERR SOCKET SERVER unable to obtain a connection uuid")
+		return
+	}
+
+	authorizer := s.handler.Authorizer()
+	roles, err := util.DefaultRoles(r, authorizer, namespace, uuid, s.handler)
+	if err != nil {
+		log.Printf("ERR SOCKET SERVER AUTHZ unable to bind default rbac roles to connection with id (%s): %v\n", uuid, err)
+	}
+
+	// set auth cookie with computed default roles for this connection
+	createdCookie, err := util.SetAuthCookie(w, r, namespace, roles)
+	if err != nil {
+		log.Printf("ERR SOCKET SERVER AUTHZ unable to set authorization cookie: %v\n", err)
+	}
+	if createdCookie {
+		log.Printf("INF SOCKET SERVER AUTHZ created new cookie with authz data\n")
+	}
+
 	conn, err := websocket.Upgrade(w, r, w.Header(), MAX_READ_BUF_SIZE, MAX_WRITE_BUF_SIZE)
 	if err != nil {
 		log.Printf("ERR SOCKET SERVER unable to upgrade connection for %q: %v\n", r.URL.String(), err)
 		return
 	}
 
-	socketConn := s.handler.NewConnection(conn, w, r)
-	s.Emit("connection", socketConn)
+	socketConn := s.handler.NewConnection(uuid, conn, w, r)
+	socketConn.Join(namespace)
 
+	// assign default roles
+	for _, r := range roles {
+		if authorizer.Bind(r, socketConn) {
+			log.Printf("INF SOCKET SERVER AUTHZ bound role %q to connection with id (%s)", r.Name(), uuid)
+		}
+	}
+
+	s.Emit("connection", socketConn)
 	s.handler.Handle(socketConn)
 }
 
-func NewServer() *Server {
+func NewServer(handler connection.Handler) *Server {
 	return &Server{
 		callbacks: make(map[string][]ServerEventCallback),
-		handler:   connection.NewHandler(),
+		handler:   handler,
 	}
 }
 

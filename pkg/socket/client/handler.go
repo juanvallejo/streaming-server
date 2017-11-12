@@ -30,13 +30,13 @@ type Handler struct {
 
 func (h *Handler) CreateClient(socket connection.Connection) *Client {
 	c := NewClient(socket)
-	h.clientsById[socket.Id()] = c
+	h.clientsById[socket.UUID()] = c
 
 	return c
 }
 
 func (h *Handler) DestroyClient(socket connection.Connection) error {
-	id := socket.Id()
+	id := socket.UUID()
 	if c, ok := h.clientsById[id]; ok {
 		c.UnsetNamespace()
 		delete(h.clientsById, id)

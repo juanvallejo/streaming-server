@@ -95,7 +95,7 @@ func (c *Client) Serialize() ([]byte, error) {
 
 // UUID returns the connection id for the socket client
 func (c *Client) UUID() string {
-	return c.connection.Id()
+	return c.connection.UUID()
 }
 
 // GetSourceName retrieves a client's username (if exists)

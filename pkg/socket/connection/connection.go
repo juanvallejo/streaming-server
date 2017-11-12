@@ -70,8 +70,8 @@ type Connection interface {
 	// Emit iterates through all stored SocketEventCallback functions and calls
 	// them with the given Message argument.
 	Emit(string, MessageDataCodec)
-	// Id retrieves the connection's uuid
-	Id() string
+	// UUID retrieves the connection's uuid
+	UUID() string
 	// Join assigns the connection to a namespace
 	Join(string)
 	// TODO: add support for multiple namespaces per connection
@@ -127,7 +127,7 @@ func (c *SocketConn) Emit(eventName string, data MessageDataCodec) {
 	}
 }
 
-func (c *SocketConn) Id() string {
+func (c *SocketConn) UUID() string {
 	return c.connId
 }
 
@@ -136,7 +136,7 @@ func (c *SocketConn) Send(data []byte) {
 }
 
 func (c *SocketConn) BroadcastFrom(roomName, eventName string, data []byte) {
-	c.nsHandler.BroadcastFrom(websocket.TextMessage, c.Id(), roomName, eventName, data)
+	c.nsHandler.BroadcastFrom(websocket.TextMessage, c.UUID(), roomName, eventName, data)
 }
 
 func (c *SocketConn) Broadcast(roomName, eventName string, data []byte) {
@@ -192,6 +192,10 @@ func NewConnection(nsHandler Namespace, ws *websocket.Conn, w http.ResponseWrite
 		log.Panic(fmt.Sprintf("unable to generate uuid for new socket connection: %v", err))
 	}
 
+	return NewConnectionWithUUID(uuid, nsHandler, ws, w, r)
+}
+
+func NewConnectionWithUUID(uuid string, nsHandler Namespace, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
 	return &SocketConn{
 		Conn: ws,
 

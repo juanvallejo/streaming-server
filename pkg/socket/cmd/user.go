@@ -52,7 +52,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 		output := "All users in the current room:<br />"
 		for _, conn := range user.Connections() {
-			c, err := clientHandler.GetClient(conn.Id())
+			c, err := clientHandler.GetClient(conn.UUID())
 			if err != nil {
 				continue
 			}

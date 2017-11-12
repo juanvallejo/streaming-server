@@ -120,7 +120,7 @@ func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *
 		return "", fmt.Errorf("error: unable to authorize the requested command")
 	}
 
-	if c.AccessController.Verify(client, rule) {
+	if c.AccessController.Verify(client.Connection(), rule) {
 		return c.SocketCommandHandler.ExecuteCommand(cmdRoot, args, client, clientHandler, playbackHandler, streamHandler)
 	}
 
@@ -130,15 +130,11 @@ func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *
 
 // NewControlledHandler returns a command handler capable
 // of restricting command access based on a client's role
-func NewHandlerWithRBAC() SocketCommandHandler {
-	h := &HandlerWithRBAC{
+func NewHandlerWithRBAC(authorizer rbac.Authorizer) SocketCommandHandler {
+	return &HandlerWithRBAC{
 		SocketCommandHandler: NewHandler(),
-		AccessController:     rbac.NewAuthorizer(),
+		AccessController:     authorizer,
 	}
-
-	addDefaultRoles(h.AccessController)
-
-	return h
 }
 
 // instantiate and append known socket commands
@@ -164,7 +160,7 @@ func resolveCommandAlias(cmdRoot string, commands, aliases map[string]SocketComm
 	return command, exists
 }
 
-func addDefaultRoles(authz rbac.Authorizer) {
+func AddDefaultRoles(authz rbac.Authorizer) {
 	// default rules
 	clearChat := rbac.NewRule("clear the chat", []string{"clear"})
 	debugReload := rbac.NewRule("reload all clients", []string{

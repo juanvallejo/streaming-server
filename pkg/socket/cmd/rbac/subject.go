@@ -4,6 +4,3 @@ package rbac
 type Subject interface {
 	UUID() string
 }
-
-type SubjectSpec struct {
-}

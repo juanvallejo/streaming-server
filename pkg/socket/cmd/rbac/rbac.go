@@ -1,33 +1,62 @@
 package rbac
 
 import (
-	"encoding/json"
+	"fmt"
+	"strings"
 )
 
 const (
-	AuthCookieName = "flicktrack.io/auth/cookie"
+	AuthCookieName = "flicktrack_io_auth_cookie"
 
 	VIEWER_ROLE = "viewer"
 	USER_ROLE   = "user"
 	ADMIN_ROLE  = "admin"
 )
 
-type SerializableRole interface {
-	Serialize() ([]byte, error)
+type AuthCookieDataNs struct {
+	Id    string   `json:"id"`
+	Roles []string `json:"roles"`
 }
 
-type SerializableRoleSpec struct {
-	Id   string `json:"id"`
-	Role string `json:"role"`
+type AuthCookieData struct {
+	Namespaces []*AuthCookieDataNs `json:"namespaces"`
 }
 
-func (s *SerializableRoleSpec) Serialize() ([]byte, error) {
-	return json.Marshal(s)
-}
-
-func NewSerializableRole(id, role string) SerializableRole {
-	return &SerializableRoleSpec{
-		Id:   id,
-		Role: role,
+func (a *AuthCookieData) Serialize() ([]byte, error) {
+	data := []string{}
+	for _, ns := range a.Namespaces {
+		data = append(data, fmt.Sprintf("id=%s+roles=%s", ns.Id, strings.Join(ns.Roles, ",")))
 	}
+	return []byte(strings.Join(data, "|")), nil
+}
+
+func (a *AuthCookieData) Decode(data []byte) error {
+	a.Namespaces = []*AuthCookieDataNs{}
+	pipeSegs := strings.Split(string(data), "|")
+	for _, pipeSeg := range pipeSegs {
+		s := &AuthCookieDataNs{}
+		pSegs := strings.Split(pipeSeg, "+")
+		for _, pSeg := range pSegs {
+			eqSegs := strings.Split(pSeg, "=")
+			if len(eqSegs) < 2 {
+				return malformedErr(eqSegs)
+			}
+
+			switch eqSegs[0] {
+			case "id":
+				s.Id = eqSegs[1]
+			case "roles":
+				s.Roles = strings.Split(eqSegs[1], ",")
+			default:
+				return fmt.Errorf("unsupported auth-cookie key: %q", eqSegs[0])
+			}
+		}
+		a.Namespaces = append(a.Namespaces, s)
+	}
+
+	return nil
+}
+
+func malformedErr(v interface{}) error {
+	return fmt.Errorf("malformed auth-cookie key-value: %v", v)
 }
