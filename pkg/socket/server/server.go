@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
+	connutil "github.com/juanvallejo/streaming-server/pkg/socket/connection/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 )
 
@@ -35,7 +36,8 @@ type Server struct {
 	// callbacks stores event functions for socket connections
 	callbacks map[string][]ServerEventCallback
 	// connHandler is a handler for incoming connection upgrade requests
-	connHandler connection.Handler
+	connHandler connection.ConnectionHandler
+	nsHandler   connection.NamespaceHandler
 }
 
 func (s *Server) On(eventName string, callback ServerEventCallback) {
@@ -67,22 +69,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", origin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-	namespace, err := util.NamespaceFromRequest(r)
+	nsName, err := util.NamespaceFromRequest(r)
 	if err != nil {
-		namespace = DEFAULT_NAMESPACE
-		log.Printf("ERR SOCKET SERVER unable to obtain a room. Defaulting to %v\n", namespace)
+		nsName = DEFAULT_NAMESPACE
+		log.Printf("ERR SOCKET SERVER unable to obtain a room. Defaulting to %v\n", nsName)
 	}
 
-	uuid, err := connection.GenerateUUID()
+	uuid, err := connutil.GenerateUUID()
 	if err != nil {
 		log.Printf("ERR SOCKET SERVER unable to obtain a connection uuid")
 		return
 	}
 
+	namespace, exists := s.nsHandler.NamespaceByName(nsName)
+	if !exists {
+		log.Printf("INF SOCKET SERVER namespace with name %q did not exist; creating...", nsName)
+		namespace = s.nsHandler.NewNamespace(nsName)
+	}
+
 	roles := []rbac.Role{}
 	authorizer := s.connHandler.Authorizer()
 	if authorizer != nil {
-		roles, err = util.DefaultRoles(r, authorizer, namespace, uuid, s.connHandler)
+		roles, err = util.DefaultRoles(r, authorizer, uuid, namespace)
 		if err != nil {
 			log.Printf("ERR SOCKET SERVER AUTHZ unable to bind default rbac roles to connection with id (%s): %v\n", uuid, err)
 		}
@@ -106,7 +114,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	socketConn := s.connHandler.NewConnection(uuid, conn, w, r)
-	socketConn.Join(namespace)
+	socketConn.Join(namespace.Name())
 
 	// assign default roles
 	if authorizer != nil {
@@ -121,10 +129,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.connHandler.Handle(socketConn)
 }
 
-func NewServer(handler connection.Handler) *Server {
+func NewServer(handler connection.ConnectionHandler, nsHandler connection.NamespaceHandler) *Server {
 	return &Server{
 		callbacks:   make(map[string][]ServerEventCallback),
 		connHandler: handler,
+		nsHandler:   nsHandler,
 	}
 }
 

@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection/util"
 )
 
 // MessageDataCodec is a serializable schema representing
@@ -103,7 +105,7 @@ type SocketConn struct {
 	connId     string
 	respWriter http.ResponseWriter
 	httpReq    *http.Request
-	nsHandler  Namespace
+	nsHandler  NamespaceHandler
 	ns         string
 }
 
@@ -148,12 +150,12 @@ func (c *SocketConn) Connections() []Connection {
 		return []Connection{}
 	}
 
-	conns, exists := c.nsHandler.Namespace(c.ns)
+	namespace, exists := c.nsHandler.NamespaceByName(c.ns)
 	if !exists {
 		return []Connection{}
 	}
 
-	return conns
+	return namespace.Connections()
 }
 
 func (c *SocketConn) Join(roomName string) {
@@ -185,9 +187,9 @@ func (c *SocketConn) Request() *http.Request {
 	return c.httpReq
 }
 
-func NewConnection(nsHandler Namespace, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
+func NewConnection(nsHandler NamespaceHandler, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
 	// generate a uuid for this connection, or panic
-	uuid, err := GenerateUUID()
+	uuid, err := util.GenerateUUID()
 	if err != nil {
 		log.Panic(fmt.Sprintf("unable to generate uuid for new socket connection: %v", err))
 	}
@@ -195,7 +197,7 @@ func NewConnection(nsHandler Namespace, ws *websocket.Conn, w http.ResponseWrite
 	return NewConnectionWithUUID(uuid, nsHandler, ws, w, r)
 }
 
-func NewConnectionWithUUID(uuid string, nsHandler Namespace, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
+func NewConnectionWithUUID(uuid string, nsHandler NamespaceHandler, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
 	return &SocketConn{
 		Conn: ws,
 

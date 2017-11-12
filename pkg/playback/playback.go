@@ -52,11 +52,6 @@ type StreamPlayback struct {
 	// State indicates the current state of the
 	// room's StreamPlayback
 	state StreamPlaybackState
-
-	// Reapable indicates whether the object
-	// is a candidate for being reaped from
-	// a StreamPlayback composer
-	Reapable bool
 }
 
 func (p *StreamPlayback) UUID() string {

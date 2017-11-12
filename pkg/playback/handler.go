@@ -2,6 +2,8 @@ package playback
 
 import (
 	"log"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
 type StreamPlaybackHandler interface {
@@ -17,6 +19,9 @@ type StreamPlaybackHandler interface {
 	GetStreamPlaybacks() []*StreamPlayback
 	// ReapStreamPlayback receives a *StreamPlayback and removes it from the list of composed *StreamPlaybacks
 	ReapStreamPlayback(*StreamPlayback) bool
+	// IsReapable receives a StreamPlayback and determines if it is reapable
+	// based on whether or not its corresponding Namespace has any items left
+	IsReapable(*StreamPlayback) bool
 }
 
 // Handler implements StreamPlaybackHandler
@@ -24,7 +29,8 @@ type Handler struct {
 	isGarbageCollected bool
 	garbageCollector   *PlaybackReaper
 	// map of stream ids to StreamPlayback objects
-	streamplaybacks map[string]*StreamPlayback
+	streamplaybacks  map[string]*StreamPlayback
+	namespaceHandler connection.NamespaceHandler
 }
 
 func (h *Handler) NewStreamPlayback(roomName string) *StreamPlayback {
@@ -37,9 +43,24 @@ func (h *Handler) ReapStreamPlayback(p *StreamPlayback) bool {
 	if sp, exists := h.streamplaybacks[p.id]; exists {
 		sp.Cleanup()
 		delete(h.streamplaybacks, sp.id)
+
+		// clean up composed namespace with name
+		// corresponding to the playback object's id
+		h.namespaceHandler.DeleteNamespaceByName(sp.UUID())
 		return exists
 	}
 	return false
+}
+
+func (h *Handler) IsReapable(p *StreamPlayback) bool {
+	ns, exists := h.namespaceHandler.NamespaceByName(p.UUID())
+	if !exists {
+		// if a corresponding namespace for the StreamPlayback
+		// does not exist, mark as reapable
+		return true
+	}
+
+	return len(ns.Connections()) == 0
 }
 
 func (h *Handler) GetStreamPlayback(roomName string) (*StreamPlayback, bool) {
@@ -74,14 +95,16 @@ func (h *Handler) initGarbageCollector() {
 	log.Printf("INF PlaybackHandler GarbageCollection started.\n")
 }
 
-func NewHandler() StreamPlaybackHandler {
+func NewHandler(nsHandler connection.NamespaceHandler) StreamPlaybackHandler {
 	return &Handler{
-		streamplaybacks: make(map[string]*StreamPlayback),
+		namespaceHandler: nsHandler,
+		streamplaybacks:  make(map[string]*StreamPlayback),
 	}
 }
 
-func NewGarbageCollectedHandler() StreamPlaybackHandler {
+func NewGarbageCollectedHandler(nsHandler connection.NamespaceHandler) StreamPlaybackHandler {
 	h := &Handler{
+		namespaceHandler: nsHandler,
 		garbageCollector: NewPlaybackReaper(),
 		streamplaybacks:  make(map[string]*StreamPlayback),
 	}

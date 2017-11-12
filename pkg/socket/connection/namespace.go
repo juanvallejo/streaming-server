@@ -1,24 +1,113 @@
 package connection
 
 import (
+	"fmt"
 	"log"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection/util"
 )
+
+type Namespace interface {
+	// Add receives a Connection to compose
+	Add(Connection) error
+	// Remove receives a Connection to remove from the list
+	// of composed connections. Returns an error if the
+	// connection is not aggregated by this namespace
+	Remove(Connection) error
+	// Connection receives a connection uuid and returns the
+	// connection associated with it, or a boolean (false)
+	// if a connection does not exist by the specified uuid.
+	Connection(string) (Connection, bool)
+	// Connections returns a slice of connections aggregated by
+	// the current namespace
+	Connections() []Connection
+	// Name returns the given namespace name
+	Name() string
+	// UUID returns the unique identifier for the namespace
+	UUID() string
+}
+
+type NamespaceSpec struct {
+	name      string
+	id        string
+	connsById map[string]Connection
+}
+
+func (n *NamespaceSpec) Add(conn Connection) error {
+	if _, exists := n.connsById[conn.UUID()]; exists {
+		return fmt.Errorf("connection with id (%s) has already been added to namespace %q", conn.UUID(), n.name)
+	}
+
+	n.connsById[conn.UUID()] = conn
+	return nil
+}
+
+func (n *NamespaceSpec) Remove(conn Connection) error {
+	if _, exists := n.connsById[conn.UUID()]; exists {
+		delete(n.connsById, conn.UUID())
+		return nil
+	}
+
+	return fmt.Errorf("connection with id (%s) does not exist in namespace %q", conn.UUID(), n.name)
+}
+
+func (n *NamespaceSpec) Connection(uuid string) (Connection, bool) {
+	c, exists := n.connsById[uuid]
+	return c, exists
+}
+
+func (n *NamespaceSpec) Connections() []Connection {
+	conns := []Connection{}
+	for _, c := range n.connsById {
+		conns = append(conns, c)
+	}
+
+	return conns
+}
+
+func (n *NamespaceSpec) Name() string {
+	return n.name
+}
+
+func (n *NamespaceSpec) UUID() string {
+	return n.id
+}
+
+func NewNamespace(name string) Namespace {
+	id, err := util.GenerateUUID()
+	if err != nil {
+		log.Panic(fmt.Sprintf("unable to generate namespace uuid: %v", err))
+	}
+
+	return &NamespaceSpec{
+		id:        id,
+		name:      name,
+		connsById: make(map[string]Connection),
+	}
+}
 
 // Namespace provides convenience methods for
 // handling segments of registered Connections
-type Namespace interface {
-	// AddToNamespace receives a namespace id and a Connection and adds the
+type NamespaceHandler interface {
+	// AddToNamespace receives a namespace name and a Connection and adds the
 	// Connection to the specified namespace. If the specified namespace does
 	// not exist, a new one is created.
 	AddToNamespace(string, Connection)
-	// Namespace receives a namespace id and returns the corresponding connections
+	// Namespace receives a namespace name and returns the corresponding connections
 	// assigned to it, or a boolean (false) if it does not exist.
-	Namespace(string) ([]Connection, bool)
-	// RemoveFromNamespace receives a namespace id and a Connection and removes
+	NamespaceByName(string) (Namespace, bool)
+	// NewNamespace creates a namespace with the given name
+	// or returns an existing namespace if one already exists
+	// by the given name
+	NewNamespace(string) Namespace
+	// RemoveFromNamespace receives a namespace name and a Connection and removes
 	// the Connection from the specified namespace. If the namespace does not exist,
 	// a no-op occurs. If removing the Connection from the namespace results in an empty
 	// namespace, the namespace is deleted.
 	RemoveFromNamespace(string, Connection)
+	// DeleteNamespaceByName receives a namespace name and removes it
+	// from the list of composed namespaces
+	DeleteNamespaceByName(string) error
 	// Broadcast iterates through all connections in a namespace and sends received data.
 	// If a given namespace does not exist, a no-op occurs
 	Broadcast(int, string, string, []byte)
@@ -26,66 +115,78 @@ type Namespace interface {
 	BroadcastFrom(int, string, string, string, []byte)
 }
 
-// ConnNamespace implements Namespace
-type ConnNamespace struct {
-	connsByNamespace map[string][]Connection
+// NamespaceHandlerSpec implements Namespace
+type NamespaceHandlerSpec struct {
+	nsByName map[string]Namespace
 }
 
-func (h *ConnNamespace) AddToNamespace(ns string, conn Connection) {
+func (h *NamespaceHandlerSpec) AddToNamespace(ns string, conn Connection) {
 	if len(ns) == 0 {
 		return
 	}
 
-	_, exists := h.connsByNamespace[ns]
+	namespace, exists := h.nsByName[ns]
 	if !exists {
-		h.connsByNamespace[ns] = []Connection{}
+		namespace = NewNamespace(ns)
+		h.nsByName[ns] = namespace
 	}
 
-	h.connsByNamespace[ns] = append(h.connsByNamespace[ns], conn)
+	namespace.Add(conn)
 }
 
-func (h *ConnNamespace) Namespace(ns string) ([]Connection, bool) {
-	conns, exist := h.connsByNamespace[ns]
+func (h *NamespaceHandlerSpec) NewNamespace(ns string) Namespace {
+	namespace, exists := h.nsByName[ns]
+	if !exists {
+		namespace = NewNamespace(ns)
+		h.nsByName[ns] = namespace
+	}
+
+	return namespace
+}
+
+func (h *NamespaceHandlerSpec) NamespaceByName(ns string) (Namespace, bool) {
+	conns, exist := h.nsByName[ns]
 	return conns, exist
 }
 
-func (h *ConnNamespace) RemoveFromNamespace(ns string, conn Connection) {
-	conns, exists := h.connsByNamespace[ns]
-	if !exists {
-		return
+func (h *NamespaceHandlerSpec) DeleteNamespaceByName(ns string) error {
+	if _, exists := h.nsByName[ns]; exists {
+		delete(h.nsByName, ns)
+		return nil
 	}
 
-	for idx, c := range conns {
-		if c.UUID() == conn.UUID() {
-			h.connsByNamespace[ns] = append(conns[0:idx], conns[idx+1:]...)
-			if len(h.connsByNamespace[ns]) == 0 {
-				delete(h.connsByNamespace, ns)
-			}
-			return
-		}
-	}
-
-	log.Printf("WRN SOCKET CONN NAMESPACE attempt to remove connection (%q) from namespace (%q) but connection was not found.", conn.UUID(), ns)
+	return fmt.Errorf("unable to remove non-existent namespace with name %q", ns)
 }
 
-func (h *ConnNamespace) Broadcast(messageType int, ns, eventName string, data []byte) {
-	conns, exists := h.connsByNamespace[ns]
+func (h *NamespaceHandlerSpec) RemoveFromNamespace(ns string, conn Connection) {
+	namespace, exists := h.nsByName[ns]
 	if !exists {
 		return
 	}
 
-	for _, c := range conns {
+	if err := namespace.Remove(conn); err != nil {
+		log.Printf("WRN SOCKET CONN NAMESPACE unable to remove connection (%q) from namespace (%q): %v", conn.UUID(), ns, err)
+	}
+}
+
+func (h *NamespaceHandlerSpec) Broadcast(messageType int, ns, eventName string, data []byte) {
+	namespace, exists := h.nsByName[ns]
+	if !exists {
+		return
+	}
+
+	for _, c := range namespace.Connections() {
 		c.WriteMessage(messageType, data)
 	}
 }
 
-func (h *ConnNamespace) BroadcastFrom(messageType int, connId, ns, eventName string, data []byte) {
-	conns, exists := h.connsByNamespace[ns]
+func (h *NamespaceHandlerSpec) BroadcastFrom(messageType int, connId, ns, eventName string, data []byte) {
+	namespace, exists := h.nsByName[ns]
 	if !exists {
 		return
 	}
 
-	for _, c := range conns {
+	for _, c := range namespace.Connections() {
 		if c.UUID() == connId {
 			continue
 		}
@@ -93,8 +194,8 @@ func (h *ConnNamespace) BroadcastFrom(messageType int, connId, ns, eventName str
 	}
 }
 
-func NewNamespaceHandler() Namespace {
-	return &ConnNamespace{
-		connsByNamespace: make(map[string][]Connection),
+func NewNamespaceHandler() NamespaceHandler {
+	return &NamespaceHandlerSpec{
+		nsByName: make(map[string]Namespace),
 	}
 }

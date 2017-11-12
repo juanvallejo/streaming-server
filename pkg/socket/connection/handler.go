@@ -10,8 +10,8 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 )
 
-// Handler provides methods for managing multiple socket connections
-type Handler interface {
+// ConnectionHandler provides methods for managing multiple socket connections
+type ConnectionHandler interface {
 	// Authorizer returns an RBAC authorizer or nil
 	Authorizer() rbac.Authorizer
 	// NewConnection instantiates a new Connection
@@ -25,9 +25,9 @@ type Handler interface {
 	GetConnection(string) (Connection, bool)
 	// DeleteConnection receives a Connection and removes it from the internal list
 	DeleteConnection(Connection)
-	// Namespace receives a namespace id and returns the corresponding connections
-	// assigned to it, or a boolean (false) if it does not exist.
-	Namespace(string) ([]Connection, bool)
+	// NamespaceByName returns a connection Namespace for the given Namespace name
+	// Returns a boolean (false) if a namespace by the given name does not exist
+	NamespaceByName(string) (Namespace, bool)
 	// Handle receives a Connection and creates a goroutine
 	// to parse and handle callbacks for incoming messages
 	Handle(Connection)
@@ -35,7 +35,7 @@ type Handler interface {
 
 // ConnHandler implements Handler
 type ConnHandler struct {
-	nsHandler Namespace
+	nsHandler NamespaceHandler
 	connsById map[string]Connection
 }
 
@@ -60,29 +60,29 @@ func (h *ConnHandler) GetConnection(uuid string) (Connection, bool) {
 	return c, exists
 }
 
-func (h *ConnHandler) Namespace(ns string) ([]Connection, bool) {
-	return h.nsHandler.Namespace(ns)
-}
-
 func (h *ConnHandler) DeleteConnection(conn Connection) {
 	if _, exists := h.connsById[conn.UUID()]; exists {
 		delete(h.connsById, conn.UUID())
 	}
 }
 
+func (h *ConnHandler) NamespaceByName(ns string) (Namespace, bool) {
+	return h.nsHandler.NamespaceByName(ns)
+}
+
 func (h *ConnHandler) Handle(conn Connection) {
 	go HandleConnection(h, conn)
 }
 
-func NewHandler() Handler {
+func NewHandler(nsHandler NamespaceHandler) ConnectionHandler {
 	return &ConnHandler{
 		connsById: make(map[string]Connection),
-		nsHandler: NewNamespaceHandler(),
+		nsHandler: nsHandler,
 	}
 }
 
 type ConnHandlerWithRBAC struct {
-	Handler
+	ConnectionHandler
 
 	authorizer rbac.Authorizer
 }
@@ -91,14 +91,14 @@ func (r *ConnHandlerWithRBAC) Authorizer() rbac.Authorizer {
 	return r.authorizer
 }
 
-func NewHandlerWithRBAC(authorizer rbac.Authorizer) Handler {
+func NewHandlerWithRBAC(authorizer rbac.Authorizer, nsHandler NamespaceHandler) ConnectionHandler {
 	return &ConnHandlerWithRBAC{
-		Handler:    NewHandler(),
-		authorizer: authorizer,
+		ConnectionHandler: NewHandler(nsHandler),
+		authorizer:        authorizer,
 	}
 }
 
-func HandleConnection(handler Handler, conn Connection) {
+func HandleConnection(handler ConnectionHandler, conn Connection) {
 	for {
 		var connClosed bool
 

@@ -116,7 +116,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 		// TODO: turn this code-block into a helper (currently used here, socket/handler.go, and cmd/stream.go)
 		// if room playback state is PLAYBACK_STATE_ENDED, auto-play the next queued item (if found)
-		if sPlayback.State() == playback.PLAYBACK_STATE_ENDED {
+		if sPlayback.State() == playback.PLAYBACK_STATE_ENDED || sPlayback.State() == playback.PLAYBACK_STATE_NOT_STARTED {
 			roomQueue := sPlayback.GetQueue()
 			nextQueueItem, err := roomQueue.Next()
 			if err == nil {

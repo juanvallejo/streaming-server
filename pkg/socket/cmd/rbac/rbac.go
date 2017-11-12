@@ -15,6 +15,7 @@ const (
 
 type AuthCookieDataNs struct {
 	Id    string   `json:"id"`
+	Name  string   `json:"name"`
 	Roles []string `json:"roles"`
 }
 
@@ -25,7 +26,7 @@ type AuthCookieData struct {
 func (a *AuthCookieData) Serialize() ([]byte, error) {
 	data := []string{}
 	for _, ns := range a.Namespaces {
-		data = append(data, fmt.Sprintf("id=%s+roles=%s", ns.Id, strings.Join(ns.Roles, ",")))
+		data = append(data, fmt.Sprintf("id=%s+name=%s+roles=%s", ns.Id, ns.Name, strings.Join(ns.Roles, ",")))
 	}
 	return []byte(strings.Join(data, "|")), nil
 }
@@ -45,6 +46,8 @@ func (a *AuthCookieData) Decode(data []byte) error {
 			switch eqSegs[0] {
 			case "id":
 				s.Id = eqSegs[1]
+			case "name":
+				s.Name = eqSegs[1]
 			case "roles":
 				s.Roles = strings.Split(eqSegs[1], ",")
 			default:

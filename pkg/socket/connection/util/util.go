@@ -1,4 +1,4 @@
-package connection
+package util
 
 import (
 	"crypto/rand"

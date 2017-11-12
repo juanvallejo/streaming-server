@@ -20,7 +20,8 @@ func main() {
 	authz := flag.Bool("rbac", false, "enable role-based access control for request commands.")
 	flag.Parse()
 
-	connHandler := connection.NewHandler()
+	nsHandler := connection.NewNamespaceHandler()
+	connHandler := connection.NewHandler(nsHandler)
 	cmdHandler := cmd.NewHandler()
 
 	if *authz {
@@ -29,16 +30,17 @@ func main() {
 		authorizer := rbac.NewAuthorizer()
 		cmd.AddDefaultRoles(authorizer)
 
-		connHandler = connection.NewHandlerWithRBAC(authorizer)
+		connHandler = connection.NewHandlerWithRBAC(authorizer, nsHandler)
 		cmdHandler = cmd.NewHandlerWithRBAC(authorizer)
 
 	}
 
 	socketHandler := socket.NewHandler(
+		nsHandler,
 		connHandler,
 		cmdHandler,
 		client.NewHandler(),
-		playback.NewGarbageCollectedHandler(),
+		playback.NewGarbageCollectedHandler(nsHandler),
 		stream.NewGarbageCollectedHandler(),
 	)
 

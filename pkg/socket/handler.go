@@ -80,7 +80,6 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 						// update room's last updated time to give buffer
 						// between last client leaving and room reaping.
 						sPlayback.SetLastUpdated(time.Now())
-						sPlayback.Reapable = true
 					}
 				}
 			}
@@ -561,8 +560,6 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 		return
 	}
 
-	// mark playback object as unreapable
-	sPlayback.Reapable = false
 	sPlayback.SetLastUpdated(time.Now())
 
 	log.Printf("INF SOCKET CLIENT found StreamPlayback for room with name %q", namespace)
@@ -610,14 +607,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.server.ServeHTTP(w, r)
 }
 
-func NewHandler(connHandler connection.Handler, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) *Handler {
+func NewHandler(nsHandler connection.NamespaceHandler, connHandler connection.ConnectionHandler, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) *Handler {
 	handler := &Handler{
 		clientHandler:   clientHandler,
 		CommandHandler:  commandHandler,
 		PlaybackHandler: playbackHandler,
 		StreamHandler:   streamHandler,
 
-		server: socketserver.NewServer(connHandler),
+		server: socketserver.NewServer(connHandler, nsHandler),
 	}
 
 	handler.addRequestHandlers()

@@ -96,7 +96,7 @@ func GetCurrentDirectory() string {
 	return dir
 }
 
-func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace string) ([]rbac.Role, error) {
+func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace connection.Namespace) ([]rbac.Role, error) {
 	cookie, err := r.Cookie(rbac.AuthCookieName)
 	if err != nil {
 		return []rbac.Role{}, fmt.Errorf("unable to retrieve cookie by name %q: %v", rbac.AuthCookieName, err)
@@ -109,8 +109,16 @@ func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace stri
 
 	roles := []rbac.Role{}
 	for _, ns := range roleData.Namespaces {
-		if ns.Id != namespace {
+		if ns.Name != namespace.Name() {
 			continue
+		}
+
+		// if namespace name matched, but not id, the
+		// auth data in cookie is no longer valid -
+		// the namespace for which the stored auth
+		// data applies to no longer exists.
+		if ns.Id != namespace.UUID() {
+			return []rbac.Role{}, fmt.Errorf("valid namespace found, but auth-cookie uuid did not match namespace uuid (%q != %q)", ns.Id, namespace.UUID())
 		}
 
 		for _, r := range ns.Roles {
@@ -137,18 +145,16 @@ func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace stri
 //  - If there is no previously stored information for the given namespace in an auth cookie, or
 //    the auth cookie does not exist, and there is at least one other connection assigned to the
 //    given namespace, a "user" role will be forced onto the connection.
-func DefaultRoles(r *http.Request, authorizer rbac.Authorizer, namespace, uuid string, handler connection.Handler) ([]rbac.Role, error) {
+func DefaultRoles(r *http.Request, authorizer rbac.Authorizer, connUUID string, namespace connection.Namespace) ([]rbac.Role, error) {
 	if authorizer == nil {
-		return []rbac.Role{}, fmt.Errorf("attempt to assign default roles to user (%s) with no authorizer enabled", uuid)
+		return []rbac.Role{}, fmt.Errorf("attempt to assign default roles to user (%s) with no authorizer enabled", connUUID)
 	}
-
-	conns, _ := handler.Namespace(namespace)
 
 	// assign admin role to user if room already exists,
 	// but they are the only client assigned to it
 	roleName := rbac.ADMIN_ROLE
-	for _, c := range conns {
-		if c.UUID() == uuid {
+	for _, c := range namespace.Connections() {
+		if c.UUID() == connUUID {
 			continue
 		}
 
@@ -157,14 +163,14 @@ func DefaultRoles(r *http.Request, authorizer rbac.Authorizer, namespace, uuid s
 
 	role, found := authorizer.Role(roleName)
 	if !found {
-		return []rbac.Role{}, fmt.Errorf("unable to bind role %q to connection with id (%s): unable to find role", roleName, uuid)
+		return []rbac.Role{}, fmt.Errorf("unable to bind role %q to connection with id (%s): unable to find role", roleName, connUUID)
 	}
 
 	// if an "admin" role is computed for the current connection,
 	// override any previous roles stored in the auth cookie. An
 	// "admin" role takes precedence over any previously stored roles.
 	if role.Name() == rbac.ADMIN_ROLE {
-		log.Printf("INF SOCKET SERVER AUTHZ %q role was computed for current connection with id (%s). Ignoring previously stored roles in auth cookie...", "admin", uuid)
+		log.Printf("INF SOCKET SERVER AUTHZ %q role was computed for current connection with id (%s). Ignoring previously stored roles in auth cookie...", "admin", connUUID)
 		return []rbac.Role{role}, nil
 	}
 
@@ -172,7 +178,7 @@ func DefaultRoles(r *http.Request, authorizer rbac.Authorizer, namespace, uuid s
 	// compute default roles based on given data
 	roles, err := rolesFromCookie(r, authorizer, namespace)
 	if err == nil && len(roles) > 0 {
-		log.Printf("INF SOCKET SERVER AUTHZ found auth cookie with role data. Retrieving...\n")
+		log.Printf("INF SOCKET SERVER AUTHZ found auth cookie with valid role data. Retrieving...\n")
 		return roles, nil
 	}
 
@@ -193,7 +199,7 @@ func GenerateAuthCookie(cookieData *rbac.AuthCookieData) (*http.Cookie, error) {
 	}, nil
 }
 
-func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace string, roles []rbac.Role) (bool, error) {
+func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace connection.Namespace, roles []rbac.Role) (bool, error) {
 	cookie, err := r.Cookie(rbac.AuthCookieName)
 	if err != nil {
 		roleGroup := []string{}
@@ -205,7 +211,8 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace string, rol
 		cookie, genErr = GenerateAuthCookie(&rbac.AuthCookieData{
 			Namespaces: []*rbac.AuthCookieDataNs{
 				{
-					Id:    namespace,
+					Id:    namespace.UUID(),
+					Name:  namespace.Name(),
 					Roles: roleGroup,
 				},
 			},
@@ -227,7 +234,7 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace string, rol
 	// remove current namespace data from cookie (if any)
 	newCookieData := &rbac.AuthCookieData{}
 	for _, ns := range cookieData.Namespaces {
-		if ns.Id != namespace {
+		if ns.Name != namespace.Name() {
 			newCookieData.Namespaces = append(newCookieData.Namespaces, ns)
 		}
 	}
@@ -239,7 +246,8 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace string, rol
 
 	// create new namespace data entry with updated roles
 	newCookieData.Namespaces = append(newCookieData.Namespaces, &rbac.AuthCookieDataNs{
-		Id:    namespace,
+		Id:    namespace.UUID(),
+		Name:  namespace.Name(),
 		Roles: roleGroup,
 	})
 
