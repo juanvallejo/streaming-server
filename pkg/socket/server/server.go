@@ -34,8 +34,8 @@ type SocketServer interface {
 type Server struct {
 	// callbacks stores event functions for socket connections
 	callbacks map[string][]ServerEventCallback
-	//
-	handler connection.Handler
+	// connHandler is a handler for incoming connection upgrade requests
+	connHandler connection.Handler
 }
 
 func (s *Server) On(eventName string, callback ServerEventCallback) {
@@ -80,9 +80,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roles := []rbac.Role{}
-	authorizer := s.handler.Authorizer()
+	authorizer := s.connHandler.Authorizer()
 	if authorizer != nil {
-		roles, err = util.DefaultRoles(r, authorizer, namespace, uuid, s.handler)
+		roles, err = util.DefaultRoles(r, authorizer, namespace, uuid, s.connHandler)
 		if err != nil {
 			log.Printf("ERR SOCKET SERVER AUTHZ unable to bind default rbac roles to connection with id (%s): %v\n", uuid, err)
 		}
@@ -105,7 +105,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	socketConn := s.handler.NewConnection(uuid, conn, w, r)
+	socketConn := s.connHandler.NewConnection(uuid, conn, w, r)
 	socketConn.Join(namespace)
 
 	// assign default roles
@@ -118,13 +118,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Emit("connection", socketConn)
-	s.handler.Handle(socketConn)
+	s.connHandler.Handle(socketConn)
 }
 
 func NewServer(handler connection.Handler) *Server {
 	return &Server{
-		callbacks: make(map[string][]ServerEventCallback),
-		handler:   handler,
+		callbacks:   make(map[string][]ServerEventCallback),
+		connHandler: handler,
 	}
 }
 
