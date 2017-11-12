@@ -129,6 +129,7 @@ func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace stri
 
 // BindDefaultuserRoles computes the default roles to assign to a given connection request
 // based on previously stored auth data as well as a connection's namespace state.
+// The following rules will be followed (in the given order) when determining which roles to return:
 //  - If no other connections are bound to the given namespace, an "admin" role will be assigned
 //    and forced onto the connection - regardless of previously stored data on an existing auth cookie.
 //  - If auth information was previously stored in an auth cookie, and the computed role based on

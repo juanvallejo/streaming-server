@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 )
@@ -78,19 +79,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	roles := []rbac.Role{}
 	authorizer := s.handler.Authorizer()
-	roles, err := util.DefaultRoles(r, authorizer, namespace, uuid, s.handler)
-	if err != nil {
-		log.Printf("ERR SOCKET SERVER AUTHZ unable to bind default rbac roles to connection with id (%s): %v\n", uuid, err)
-	}
+	if authorizer != nil {
+		roles, err = util.DefaultRoles(r, authorizer, namespace, uuid, s.handler)
+		if err != nil {
+			log.Printf("ERR SOCKET SERVER AUTHZ unable to bind default rbac roles to connection with id (%s): %v\n", uuid, err)
+		}
 
-	// set auth cookie with computed default roles for this connection
-	createdCookie, err := util.SetAuthCookie(w, r, namespace, roles)
-	if err != nil {
-		log.Printf("ERR SOCKET SERVER AUTHZ unable to set authorization cookie: %v\n", err)
-	}
-	if createdCookie {
-		log.Printf("INF SOCKET SERVER AUTHZ created new cookie with authz data\n")
+		// set auth cookie with computed default roles for this connection
+		createdCookie, err := util.SetAuthCookie(w, r, namespace, roles)
+		if err != nil {
+			log.Printf("ERR SOCKET SERVER AUTHZ unable to set authorization cookie: %v\n", err)
+		}
+		if createdCookie {
+			log.Printf("INF SOCKET SERVER AUTHZ created new cookie with authz data\n")
+		}
+	} else {
+		log.Printf("WRN SOCKET SERVER AUTHZ no authorizer found\n")
 	}
 
 	conn, err := websocket.Upgrade(w, r, w.Header(), MAX_READ_BUF_SIZE, MAX_WRITE_BUF_SIZE)
@@ -103,9 +109,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	socketConn.Join(namespace)
 
 	// assign default roles
-	for _, r := range roles {
-		if authorizer.Bind(r, socketConn) {
-			log.Printf("INF SOCKET SERVER AUTHZ bound role %q to connection with id (%s)", r.Name(), uuid)
+	if authorizer != nil {
+		for _, r := range roles {
+			if authorizer.Bind(r, socketConn) {
+				log.Printf("INF SOCKET SERVER AUTHZ bound role %q to connection with id (%s)", r.Name(), uuid)
+			}
 		}
 	}
 

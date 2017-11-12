@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
@@ -16,18 +17,31 @@ import (
 
 func main() {
 	port := flag.String("port", "8080", "default port to listen on")
+	authz := flag.Bool("rbac", false, "enable role-based access control for request commands.")
 	flag.Parse()
 
-	authorizer := rbac.NewAuthorizer()
-	cmd.AddDefaultRoles(authorizer)
+	connHandler := connection.NewHandler()
+	cmdHandler := cmd.NewHandler()
+
+	if *authz {
+		log.Printf("INF AUTHZ rbac authorization enabled.\n")
+
+		authorizer := rbac.NewAuthorizer()
+		cmd.AddDefaultRoles(authorizer)
+
+		connHandler = connection.NewHandlerWithRBAC(authorizer)
+		cmdHandler = cmd.NewHandlerWithRBAC(authorizer)
+
+	}
 
 	socketHandler := socket.NewHandler(
-		connection.NewHandlerWithRBAC(authorizer),
-		cmd.NewHandlerWithRBAC(authorizer),
+		connHandler,
+		cmdHandler,
 		client.NewHandler(),
 		playback.NewGarbageCollectedHandler(),
 		stream.NewGarbageCollectedHandler(),
 	)
+
 	requestHandler := server.NewRequestHandler(socketHandler)
 
 	// init http server with socket.io support
@@ -37,5 +51,4 @@ func main() {
 		Out:  os.Stdout,
 	})
 	application.Serve()
-
 }
