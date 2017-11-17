@@ -117,11 +117,11 @@ func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *
 	rule, exists := rbac.RuleByAction(c.AccessController.Bindings(), action)
 	if !exists {
 		log.Printf("ERR SOCKET CMD AUTHZ unable to find rule for action %q for client %q with id (%s)", action, client.GetUsernameOrId(), client.UUID())
-		return "", fmt.Errorf("error: unable to authorize the requested command")
+		return "", fmt.Errorf("error: unable to authorize the requested command\n%s", command.GetUsage())
 	}
 
 	if c.AccessController.Verify(client.Connection(), rule) {
-		return c.SocketCommandHandler.ExecuteCommand(cmdRoot, args, client, clientHandler, playbackHandler, streamHandler)
+		return command.Execute(c, args, client, clientHandler, playbackHandler, streamHandler)
 	}
 
 	log.Printf("ERR SOCKET CMD AUTHZ client %q with id (%s) has attempted to perform unauthorized action: %q", client.GetUsernameOrId(), client.UUID(), action)
@@ -140,6 +140,7 @@ func NewHandlerWithRBAC(authorizer rbac.Authorizer) SocketCommandHandler {
 // instantiate and append known socket commands
 // to a SocketCommand handler
 func addSocketCommands(handler SocketCommandHandler) {
+	handler.AddCommand(NewCmdRole())
 	handler.AddCommand(NewCmdClear())
 	handler.AddCommand(NewCmdDebug())
 	handler.AddCommand(NewCmdHelp())
@@ -212,6 +213,11 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		"queue/order/all",
 		"queue/order/all/*",
 	})
+	roleEdit := rbac.NewRule("Add, replace, or remove roles for a subject", []string{
+		"role/set/*",
+		"role/add/*",
+		"role/remove/*",
+	})
 	userUpdateName := rbac.NewRule("update a client's username", []string{
 		"user/name/*",
 	})
@@ -252,6 +258,7 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 	adminRole := rbac.NewRole(rbac.ADMIN_ROLE, append([]rbac.Rule{
 		streamControl,
 		debugReload,
+		roleEdit,
 		queueClearRoom,
 		queueOrderRoom,
 	}, userRole.Rules()...))

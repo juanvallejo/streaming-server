@@ -471,6 +471,8 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 		return
 	}
 
+	// TODO: use a handler to broadcast to namespace
+
 	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(namespace)
 	if !exists {
 		log.Printf("INF SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", namespace)
