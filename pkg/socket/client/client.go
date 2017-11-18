@@ -306,8 +306,8 @@ func (c *Client) UnsetNamespace() {
 // the socket is currently in, or boolean false if
 // the socket has not been assigned to a room yet
 func (c *Client) Namespace() (string, bool) {
-	ns := c.connection.Namespace()
-	return ns, len(ns) > 0
+	ns, exists := c.connection.Namespace()
+	return ns.Name(), exists
 }
 
 // Connection returns the socket connection for the current client

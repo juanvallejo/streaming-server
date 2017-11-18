@@ -19,10 +19,10 @@ type ConnectionHandler interface {
 	// connection is spawned with the given uuid.
 	// Returns the newly created Connection
 	NewConnection(string, *websocket.Conn, http.ResponseWriter, *http.Request) Connection
-	// GetConnection receives a Connection uuid, and returns the
+	// Connection receives a Connection uuid, and returns the
 	// associated connection. Returns a boolean false if no Connection
 	// exists by the given uuid.
-	GetConnection(string) (Connection, bool)
+	Connection(string) (Connection, bool)
 	// DeleteConnection receives a Connection and removes it from the internal list
 	DeleteConnection(Connection)
 	// NamespaceByName returns a connection Namespace for the given Namespace name
@@ -44,14 +44,18 @@ func (h *ConnHandler) Authorizer() rbac.Authorizer {
 }
 
 func (h *ConnHandler) NewConnection(uuid string, ws *websocket.Conn, w http.ResponseWriter, r *http.Request) Connection {
+	var c Connection
 	if len(uuid) > 0 {
-		return NewConnectionWithUUID(uuid, h.nsHandler, ws, w, r)
+		c = NewConnectionWithUUID(uuid, h.nsHandler, ws, w, r)
+	} else {
+		c = NewConnection(h.nsHandler, ws, w, r)
 	}
 
-	return NewConnection(h.nsHandler, ws, w, r)
+	h.connsById[uuid] = c
+	return c
 }
 
-func (h *ConnHandler) GetConnection(uuid string) (Connection, bool) {
+func (h *ConnHandler) Connection(uuid string) (Connection, bool) {
 	c, exists := h.connsById[uuid]
 	if !exists {
 		return nil, exists

@@ -34,7 +34,7 @@ func NewServer(requestHandler *RequestHandler, opts *ServerOptions) *ServerOptio
 	}
 
 	if requestHandler == nil {
-		requestHandler = NewRequestHandler(nil)
+		panic("no request handler defined")
 	}
 
 	opts.Server = &http.Server{

@@ -44,7 +44,7 @@ func main() {
 		stream.NewGarbageCollectedHandler(),
 	)
 
-	requestHandler := server.NewRequestHandler(socketHandler)
+	requestHandler := server.NewRequestHandler(socketHandler, connHandler)
 
 	// init http server with socket.io support
 	application := server.NewServer(requestHandler, &server.ServerOptions{

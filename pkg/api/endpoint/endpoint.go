@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
 // ApiEndpoint provides a REST handler for an api request
@@ -16,15 +18,16 @@ type ApiEndpoint interface {
 	// api request path, minus the api request root ("/api/"). Hence for a request
 	// path "/api/stream/verb/noun", the "segments" received would be:
 	//   ["stream", "verb", "noun"].
-	Handle([]string, http.ResponseWriter, *http.Request)
+	Handle(connection.ConnectionHandler, []string, http.ResponseWriter, *http.Request)
 }
 
 type ApiEndpointSchema struct {
 	path string
 }
 
-type ApiErrorResponse struct {
-	Error    string `json:"error"`
+type ApiResponse struct {
+	Message  string `json:"message,omitempty"`
+	Error    string `json:"error,omitempty"`
 	HTTPCode int    `json:"httpCode"`
 }
 
@@ -32,10 +35,24 @@ func (e *ApiEndpointSchema) GetPath() string {
 	return e.path
 }
 
+func HandleEndpointSuccess(msg string, w http.ResponseWriter) {
+	res := &ApiResponse{
+		Message:  msg,
+		HTTPCode: http.StatusOK,
+	}
+
+	b, err := json.Marshal(res)
+	if err != nil {
+		log.Panic("unable to marshal api response")
+	}
+
+	w.Write(b)
+}
+
 func HandleEndpointError(err error, w http.ResponseWriter) {
 	message := fmt.Sprintf("error: %v", err)
 
-	res := ApiErrorResponse{
+	res := &ApiResponse{
 		Error:    message,
 		HTTPCode: http.StatusInternalServerError,
 	}
@@ -49,7 +66,7 @@ func HandleEndpointError(err error, w http.ResponseWriter) {
 }
 
 func HandleEndpointNotFound(w http.ResponseWriter) {
-	res := ApiErrorResponse{
+	res := &ApiResponse{
 		Error:    "endpoint not found",
 		HTTPCode: http.StatusNotFound,
 	}

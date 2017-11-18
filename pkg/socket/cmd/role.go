@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
@@ -67,6 +68,9 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 		return "", fmt.Errorf("error: unable to find subject %q in your namespace", subjectName)
 	}
 
+	// endpoint the client should hit in order to save roles in cookie
+	targetEndpoint := fmt.Sprintf("/api/auth/cookie?%s=%s", endpoint.CONN_ID_KEY, subject.UUID())
+
 	switch args[0] {
 	case "set":
 		if err := addRole(authorizer, subject, roleName, subjectName); err != nil {
@@ -82,15 +86,14 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 			b.RemoveSubject(subject)
 		}
 
-		// TODO: implement /api/auth/cookie
-		broadcastHttpRequest(user)
+		broadcastHttpRequest(subject, targetEndpoint)
 		return fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName), nil
 	case "add":
 		if err := addRole(authorizer, subject, roleName, subjectName); err != nil {
 			return "", err
 		}
 
-		broadcastHttpRequest(user)
+		broadcastHttpRequest(subject, targetEndpoint)
 		return fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName), nil
 	case "remove":
 		for _, b := range authorizer.Bindings() {
@@ -100,7 +103,7 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 			removed := b.RemoveSubject(subject)
 			if removed {
-				broadcastHttpRequest(user)
+				broadcastHttpRequest(subject, targetEndpoint)
 				return fmt.Sprintf("user %q unbound from role %q", subjectName, roleName), nil
 			}
 
@@ -153,13 +156,13 @@ func addRole(authorizer rbac.Authorizer, subject rbac.Subject, roleName, subject
 	return nil
 }
 
-func broadcastHttpRequest(user *client.Client) {
+func broadcastHttpRequest(user *client.Client, endpoint string) {
 	user.BroadcastTo("httprequest", &client.Response{
 		Id:   user.UUID(),
 		From: user.GetUsernameOrId(),
 		Extra: map[string]interface{}{
 			"method":   "GET",
-			"endpoint": "/api/auth/cookie",
+			"endpoint": endpoint,
 		},
 	})
 }

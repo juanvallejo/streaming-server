@@ -93,7 +93,7 @@ type NamespaceHandler interface {
 	// Connection to the specified namespace. If the specified namespace does
 	// not exist, a new one is created.
 	AddToNamespace(string, Connection)
-	// Namespace receives a namespace name and returns the corresponding connections
+	// NamespaceByName receives a namespace name and returns the corresponding connections
 	// assigned to it, or a boolean (false) if it does not exist.
 	NamespaceByName(string) (Namespace, bool)
 	// NewNamespace creates a namespace with the given name

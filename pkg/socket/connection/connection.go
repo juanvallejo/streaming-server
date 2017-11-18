@@ -80,8 +80,8 @@ type Connection interface {
 	// Leave leaves any namespace the connection has been assigned to
 	Leave(string)
 	// Namespace returns the namespace the connection has been bound to
-	// or an empty string if the connection has not yet been bound.
-	Namespace() string
+	// or a boolean false if the connection has not yet been bound to one.
+	Namespace() (Namespace, bool)
 	// On receives a key and a SocketEventCallback and pushes the SocketEventCallback
 	// to a list of SocketEventCallback functions mapped to the given key
 	On(string, SocketEventCallback)
@@ -167,8 +167,8 @@ func (c *SocketConn) Leave(roomName string) {
 	c.nsHandler.RemoveFromNamespace(roomName, c)
 }
 
-func (c *SocketConn) Namespace() string {
-	return c.ns
+func (c *SocketConn) Namespace() (Namespace, bool) {
+	return c.nsHandler.NamespaceByName(c.ns)
 }
 
 func (c *SocketConn) ReadMessage() (int, []byte, error) {

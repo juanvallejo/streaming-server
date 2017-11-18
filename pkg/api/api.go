@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/api/discovery"
 	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
 const (
@@ -29,7 +30,8 @@ type Handler interface {
 
 // ApiHandler implements Handler
 type ApiHandler struct {
-	endpoints map[string]endpoint.ApiEndpoint
+	endpoints   map[string]endpoint.ApiEndpoint
+	connections connection.ConnectionHandler
 }
 
 func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +42,7 @@ func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	log.Printf("API Serving request from %s for endpoint %q\n", ip, r.URL.String())
 
-	h.HandleEndpoint(r.URL.String(), w, r)
+	h.HandleEndpoint(r.URL.Path, w, r)
 }
 
 func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.Request) {
@@ -70,7 +72,7 @@ func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.
 	root := "/" + segs[2] // segs[1] should be ApiPrefix
 
 	if e, exists := h.endpoints[ApiPrefix+root]; exists {
-		e.Handle(segs[2:], w, r)
+		e.Handle(h.connections, segs[2:], w, r)
 		return
 	}
 
@@ -87,9 +89,10 @@ func (h *ApiHandler) RegisterEndpoint(e endpoint.ApiEndpoint) {
 
 }
 
-func NewHandler() Handler {
+func NewHandler(connHandler connection.ConnectionHandler) Handler {
 	handler := &ApiHandler{
-		endpoints: make(map[string]endpoint.ApiEndpoint),
+		endpoints:   make(map[string]endpoint.ApiEndpoint),
+		connections: connHandler,
 	}
 	handler.registerDefaultEndpoints()
 	return handler
@@ -98,4 +101,5 @@ func NewHandler() Handler {
 func (h *ApiHandler) registerDefaultEndpoints() {
 	h.RegisterEndpoint(endpoint.NewStreamEndpoint())
 	h.RegisterEndpoint(endpoint.NewYoutubeEndpoint())
+	h.RegisterEndpoint(endpoint.NewAuthEndpoint())
 }

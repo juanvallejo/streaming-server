@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/types"
 	paths "github.com/juanvallejo/streaming-server/pkg/server/path"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -37,7 +37,7 @@ func (s *StreamList) Serialize() ([]byte, error) {
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
-func (e *StreamEndpoint) Handle(segments []string, w http.ResponseWriter, r *http.Request) {
+func (e *StreamEndpoint) Handle(connHandler connection.ConnectionHandler, segments []string, w http.ResponseWriter, r *http.Request) {
 	dir, err := ioutil.ReadDir(paths.StreamDataRootPath)
 	if err != nil {
 		HandleEndpointError(err, w)
@@ -106,7 +106,6 @@ func handleStreamMetadata(streamUrl string, w http.ResponseWriter, r *http.Reque
 
 	data, err := stream.FetchLocalVideoMetadata(localStream)
 	if err != nil {
-		log.Printf("HAHAHAH")
 		HandleEndpointError(err, w)
 		return
 	}
