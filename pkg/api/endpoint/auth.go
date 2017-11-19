@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
@@ -26,21 +27,8 @@ func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, segments
 		return
 	}
 
-	switch {
-	case segments[1] == "cookie":
-		handleCookieReq(connHandler, w, r)
-		return
-	}
-
-	HandleEndpointError(fmt.Errorf("unimplemented endpoint"), w)
-}
-
-// TODO: this endpoint must be accessible to non-privileged clients.
-// secure by having one-time tokens that must be provided as part of
-// a request, via a "token" parameter.
-func handleCookieReq(handler connection.ConnectionHandler, w http.ResponseWriter, r *http.Request) {
 	// no-op if authorizer does not exist
-	authorizer := handler.Authorizer()
+	authorizer := connHandler.Authorizer()
 	if authorizer == nil {
 		HandleEndpointError(fmt.Errorf("authorizer not enabled; endpoint unavailable"), w)
 		return
@@ -58,12 +46,62 @@ func handleCookieReq(handler connection.ConnectionHandler, w http.ResponseWriter
 		return
 	}
 
-	conn, exists := handler.Connection(connId)
+	conn, exists := connHandler.Connection(connId)
 	if !exists {
 		HandleEndpointError(fmt.Errorf("unable to find connection by id %v", connId), w)
 		return
 	}
 
+	switch {
+	case segments[1] == "save":
+		fallthrough
+	case segments[1] == "cookie":
+		handleCookieReq(conn, connHandler, w, r)
+		return
+	case segments[1] == "set":
+		fallthrough
+	case segments[1] == "init":
+		handleInitReq(conn, connHandler, w, r)
+		return
+	}
+
+	HandleEndpointError(fmt.Errorf("unimplemented endpoint"), w)
+}
+
+// handleInitReq initializes a connection's rbac roles from an auth cookie
+// or creates an auth cookie with default rbac roles if one does not exist.
+// roles are then bound to the given connection id.
+func handleInitReq(conn connection.Connection, handler connection.ConnectionHandler, w http.ResponseWriter, r *http.Request) {
+	ns, exists := conn.Namespace()
+	if !exists {
+		HandleEndpointError(fmt.Errorf("the connection specified has not been bound to a namespace"), w)
+		return
+	}
+
+	roles, err := util.DefaultRoles(r, handler.Authorizer(), conn.UUID(), ns)
+	if err != nil {
+		HandleEndpointError(err, w)
+		return
+	}
+
+	_, err = util.SetAuthCookie(w, r, ns, roles)
+	if err != nil {
+		HandleEndpointError(fmt.Errorf("unable to set auth cookie: %v", err), w)
+		return
+	}
+
+	// bind roles to connection
+	for _, r := range roles {
+		if handler.Authorizer().Bind(r, conn) {
+			log.Printf("INF API AUTHZ bound role %q to connection with id (%s)", r.Name(), conn.UUID())
+		}
+	}
+}
+
+// TODO: this endpoint must be accessible to non-privileged clients.
+// secure by having one-time tokens that must be provided as part of
+// a request, via a "token" parameter.
+func handleCookieReq(conn connection.Connection, handler connection.ConnectionHandler, w http.ResponseWriter, r *http.Request) {
 	ns, exists := conn.Namespace()
 	if !exists {
 		HandleEndpointError(fmt.Errorf("the connection specified has not been bound to a namespace"), w)
@@ -72,7 +110,7 @@ func handleCookieReq(handler connection.ConnectionHandler, w http.ResponseWriter
 
 	roles := []rbac.Role{}
 	roleNames := []string{}
-	for _, b := range authorizer.Bindings() {
+	for _, b := range handler.Authorizer().Bindings() {
 		for _, s := range b.Subjects() {
 			if s.UUID() == conn.UUID() {
 				roles = append(roles, b.Role())
@@ -82,18 +120,20 @@ func handleCookieReq(handler connection.ConnectionHandler, w http.ResponseWriter
 		}
 	}
 
-	createdCookie, err := util.SetAuthCookie(w, r, ns, roles)
+	cookie, _, err := util.UpdatedAuthCookie(r, ns, roles)
 	if err != nil {
-		HandleEndpointError(fmt.Errorf("unable to save auth cookie with roles for conneciton with id %q: %v", connId, err), w)
+		HandleEndpointError(fmt.Errorf("unable to set auth cookie: %v", err), w)
 		return
 	}
 
-	msg := fmt.Sprintf("successfully saved roles (%v) for id %v", roleNames, connId)
-	if createdCookie {
-		msg = fmt.Sprintf("successfully saved new roles (%v) for id %v", roleNames, connId)
-	}
+	// set both "Cookie" and "Set-Cookie" headers since
+	// client might be making request via XMLHttpRequest
+	// and cookie data might not update immediately.
+	http.SetCookie(w, cookie)
+	r.AddCookie(cookie)
+	w.Header().Set("Cookie", fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
 
-	HandleEndpointSuccess(msg, w)
+	HandleEndpointSuccess(fmt.Sprintf("successfully saved roles (%v) for id %v", roleNames, conn.UUID()), w)
 }
 
 func NewAuthEndpoint() ApiEndpoint {

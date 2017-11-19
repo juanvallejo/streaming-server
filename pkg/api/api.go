@@ -40,7 +40,7 @@ func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	log.Printf("API Serving request from %s for endpoint %q\n", ip, r.URL.String())
+	log.Printf("INF API Serving request from %s for endpoint %q\n", ip, r.URL.String())
 
 	h.HandleEndpoint(r.URL.Path, w, r)
 }

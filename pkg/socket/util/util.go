@@ -200,6 +200,24 @@ func GenerateAuthCookie(cookieData *rbac.AuthCookieData) (*http.Cookie, error) {
 }
 
 func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace connection.Namespace, roles []rbac.Role) (bool, error) {
+	cookie, created, err := UpdatedAuthCookie(r, namespace, roles)
+	if err != nil {
+		return false, err
+	}
+
+	// set both "Cookie" and "Set-Cookie" headers since
+	// client might be making request via XMLHttpRequest
+	// and cookie data might not update immediately.
+	http.SetCookie(w, cookie)
+	r.AddCookie(cookie)
+	w.Header().Set("Cookie", fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
+	return created, nil
+}
+
+// UpdatedAuthCookie receives a request, namespace, and set of roles
+// and returns an existing auth cookie with its role data updated, or
+// a new auth cookie with the given role data
+func UpdatedAuthCookie(r *http.Request, namespace connection.Namespace, roles []rbac.Role) (*http.Cookie, bool, error) {
 	cookie, err := r.Cookie(rbac.AuthCookieName)
 	if err != nil {
 		roleGroup := []string{}
@@ -218,17 +236,16 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace connection.
 			},
 		})
 		if genErr != nil {
-			return false, fmt.Errorf("unable to create cookie by name %q: %v", rbac.AuthCookieName, err)
+			return nil, false, fmt.Errorf("unable to create cookie by name %q: %v", rbac.AuthCookieName, err)
 		}
 
-		http.SetCookie(w, cookie)
-		return true, nil
+		return cookie, true, nil
 	}
 
 	// cookie exists - determine if namespace entry exists and replace or set its roles
 	cookieData := &rbac.AuthCookieData{}
 	if err := cookieData.Decode([]byte(cookie.Value)); err != nil {
-		return false, fmt.Errorf("unable to decode auth-cookie data %v: %v", cookie.Value, err)
+		return nil, false, fmt.Errorf("unable to decode auth-cookie data %v: %v", cookie.Value, err)
 	}
 
 	// remove current namespace data from cookie (if any)
@@ -253,11 +270,10 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, namespace connection.
 
 	newCookie, err := GenerateAuthCookie(newCookieData)
 	if err != nil {
-		return false, fmt.Errorf("unable to update cookie by name %q: %v", rbac.AuthCookieName, err)
+		return nil, false, fmt.Errorf("unable to update cookie by name %q: %v", rbac.AuthCookieName, err)
 	}
 
-	http.SetCookie(w, newCookie)
-	return false, nil
+	return newCookie, false, nil
 }
 
 // serializeIntoResponse receives an api.ApiCodec and
@@ -269,4 +285,15 @@ func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
 	}
 
 	return json.Unmarshal(b, dest)
+}
+
+func BroadcastHttpRequest(user *client.Client, endpoint string) {
+	user.BroadcastTo("httprequest", &client.Response{
+		Id:   user.UUID(),
+		From: user.GetUsernameOrId(),
+		Extra: map[string]interface{}{
+			"method":   "GET",
+			"endpoint": endpoint,
+		},
+	})
 }

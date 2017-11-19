@@ -93,7 +93,7 @@ type Connection interface {
 	Request() *http.Request
 	// Send receives an array of bytes to send to the connection
 	Send([]byte)
-	// WriteMessage writes sends a text message as an array of bytes to the connection
+	// WriteMessage sends a text message as an array of bytes to the connection
 	WriteMessage(int, []byte) error
 }
 

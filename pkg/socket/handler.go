@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
 	playbackutil "github.com/juanvallejo/streaming-server/pkg/playback/util"
@@ -39,7 +40,6 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 	h.RegisterClient(conn)
 	log.Printf("INF SOCKET currently %v clients registered\n", h.clientHandler.GetClientSize())
 
-	// TODO: remove room's StreamPlayback once last client has left
 	conn.On("disconnection", func(data connection.MessageDataCodec) {
 		log.Printf("INF DCONN SOCKET client with id %q has disconnected\n", conn.UUID())
 
@@ -212,6 +212,21 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 		c.BroadcastAll("chatmessage", res)
 		fmt.Printf("INF SOCKET CLIENT chatmessage received %v\n", data)
+	})
+
+	// this event is received when a client is requesting authorization endpoint information
+	conn.On("request_authorization", func(data connection.MessageDataCodec) {
+		log.Printf("INF SOCKET CLIENT AUTHZ client with id %q requested authorization information", conn.UUID())
+
+		// send an httprequest event to the client with authz endpoint information
+		c, err := h.clientHandler.GetClient(conn.UUID())
+		if err != nil {
+			log.Printf("ERR SOCKET CLIENT unable to retrieve client from connection id. Ignoring request_streamsync request: %v", err)
+			return
+		}
+
+		targetEndpoint := fmt.Sprintf("/api/auth/init?%s=%s", endpoint.CONN_ID_KEY, c.UUID())
+		util.BroadcastHttpRequest(c, targetEndpoint)
 	})
 
 	// this event is received when a client is requesting the current queue state

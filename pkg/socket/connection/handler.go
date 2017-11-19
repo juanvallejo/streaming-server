@@ -51,7 +51,7 @@ func (h *ConnHandler) NewConnection(uuid string, ws *websocket.Conn, w http.Resp
 		c = NewConnection(h.nsHandler, ws, w, r)
 	}
 
-	h.connsById[uuid] = c
+	h.connsById[c.UUID()] = c
 	return c
 }
 
