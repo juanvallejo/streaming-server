@@ -23,6 +23,7 @@ func main() {
 	nsHandler := connection.NewNamespaceHandler()
 	connHandler := connection.NewHandler(nsHandler)
 	cmdHandler := cmd.NewHandler()
+	playbackHandler := playback.NewGarbageCollectedHandler(nsHandler)
 
 	if *authz {
 		log.Printf("INF AUTHZ rbac authorization enabled.\n")
@@ -40,11 +41,11 @@ func main() {
 		connHandler,
 		cmdHandler,
 		client.NewHandler(),
-		playback.NewGarbageCollectedHandler(nsHandler),
+		playbackHandler,
 		stream.NewGarbageCollectedHandler(),
 	)
 
-	requestHandler := server.NewRequestHandler(socketHandler, connHandler)
+	requestHandler := server.NewRequestHandler(socketHandler, connHandler, playbackHandler)
 
 	// init http server with socket.io support
 	application := server.NewServer(requestHandler, &server.ServerOptions{

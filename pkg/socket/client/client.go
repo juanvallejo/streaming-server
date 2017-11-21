@@ -36,9 +36,10 @@ func (s *SerializableClientList) Serialize() ([]byte, error) {
 }
 
 type SerializableClient struct {
-	Username string `json:"username"`
-	Id       string `json:"id"`
-	Room     string `json:"room"`
+	Username string   `json:"username"`
+	Id       string   `json:"id"`
+	Room     string   `json:"room"`
+	Roles    []string `json:"roles"`
 }
 
 func (s *SerializableClient) Serialize() ([]byte, error) {

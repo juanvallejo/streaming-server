@@ -40,9 +40,9 @@ func (h *Handler) NewStreamPlayback(roomName string) *StreamPlayback {
 }
 
 func (h *Handler) ReapStreamPlayback(p *StreamPlayback) bool {
-	if sp, exists := h.streamplaybacks[p.id]; exists {
+	if sp, exists := h.streamplaybacks[p.name]; exists {
 		sp.Cleanup()
-		delete(h.streamplaybacks, sp.id)
+		delete(h.streamplaybacks, sp.name)
 
 		// clean up composed namespace with name
 		// corresponding to the playback object's id

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/config"
+	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -22,11 +24,17 @@ type YoutubeEndpoint struct {
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
-func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segments []string, w http.ResponseWriter, r *http.Request) {
+func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler, segments []string, w http.ResponseWriter, r *http.Request) {
 	if len(segments) < 2 {
 		HandleEndpointError(fmt.Errorf("unimplemented endpoint"), w)
 		return
 	}
+
+	// since we are dealing with a url value, split
+	// the unsanitized variant of the request path
+	// containing the url encoded value
+	segments = strings.Split(r.URL.String(), "/")
+	segments = segments[2:]
 
 	switch {
 	case segments[1] == "search":

@@ -82,19 +82,19 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 						sPlayback.SetLastUpdated(time.Now())
 					}
 				}
-			}
 
-			authorizer := h.CommandHandler.Authorizer()
-			if authorizer != nil {
 				// remove user from authorizer role-bindings
-				for _, b := range authorizer.Bindings() {
-					b.RemoveSubject(c.Connection())
+				authorizer := h.CommandHandler.Authorizer()
+				if authorizer != nil {
+					for _, b := range authorizer.Bindings() {
+						b.RemoveSubject(c.Connection())
+					}
+					sPlayback.HandleDisconnection(c.Connection(), authorizer, h.clientHandler)
 				}
 			}
 		}
 
-		err := h.DeregisterClient(conn)
-		if err != nil {
+		if err := h.DeregisterClient(conn); err != nil {
 			log.Printf("ERR SOCKET %v", err)
 		}
 	})
@@ -361,11 +361,24 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				continue
 			}
 
+			roles := []string{}
+			authorizer := h.CommandHandler.Authorizer()
+			if authorizer != nil {
+				for _, b := range authorizer.Bindings() {
+					for _, u := range b.Subjects() {
+						if u.UUID() == conn.UUID() {
+							roles = append(roles, b.Role().Name())
+						}
+					}
+				}
+			}
+
 			username, _ := user.GetUsername()
 			userList.Clients = append(userList.Clients, client.SerializableClient{
 				Username: username,
 				Id:       user.UUID(),
 				Room:     room,
+				Roles:    roles,
 			})
 		}
 

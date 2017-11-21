@@ -10,10 +10,6 @@ import (
 type Namespace interface {
 	// Add receives a Connection to compose
 	Add(Connection) error
-	// Remove receives a Connection to remove from the list
-	// of composed connections. Returns an error if the
-	// connection is not aggregated by this namespace
-	Remove(Connection) error
 	// Connection receives a connection uuid and returns the
 	// connection associated with it, or a boolean (false)
 	// if a connection does not exist by the specified uuid.
@@ -23,6 +19,10 @@ type Namespace interface {
 	Connections() []Connection
 	// Name returns the given namespace name
 	Name() string
+	// Remove receives a Connection to remove from the list
+	// of composed connections. Returns an error if the
+	// connection is not aggregated by this namespace
+	Remove(Connection) error
 	// UUID returns the unique identifier for the namespace
 	UUID() string
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/types"
+	"github.com/juanvallejo/streaming-server/pkg/playback"
 	paths "github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
@@ -37,7 +38,7 @@ func (s *StreamList) Serialize() ([]byte, error) {
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
-func (e *StreamEndpoint) Handle(connHandler connection.ConnectionHandler, segments []string, w http.ResponseWriter, r *http.Request) {
+func (e *StreamEndpoint) Handle(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler, segments []string, w http.ResponseWriter, r *http.Request) {
 	dir, err := ioutil.ReadDir(paths.StreamDataRootPath)
 	if err != nil {
 		HandleEndpointError(err, w)

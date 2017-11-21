@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -58,6 +59,24 @@ type Message struct {
 	Data  MessageDataCodec `json:"data"`
 }
 
+type ConnectionMetadata interface {
+	CreationTimestamp() time.Time
+}
+
+type ConnectionMetadataSpec struct {
+	creationTimestamp time.Time
+}
+
+func (m *ConnectionMetadataSpec) CreationTimestamp() time.Time {
+	return m.creationTimestamp
+}
+
+func NewConnectionMetadata() ConnectionMetadata {
+	return &ConnectionMetadataSpec{
+		creationTimestamp: time.Now(),
+	}
+}
+
 type SocketEventCallback func(MessageDataCodec)
 
 type Connection interface {
@@ -67,6 +86,8 @@ type Connection interface {
 	// BroadcastFrom behaves like Broadcast, except the connection id provided
 	// is skipped from any effects or mutations taken by the handler's method.
 	BroadcastFrom(string, string, []byte)
+	// Metadata returns ConnectionMetadata for the current connection
+	Metadata() ConnectionMetadata
 	// Connections returns socket connections that are in the same namespace as the connection
 	Connections() []Connection
 	// Emit iterates through all stored SocketEventCallback functions and calls
@@ -101,6 +122,7 @@ type Connection interface {
 type SocketConn struct {
 	*websocket.Conn
 
+	metadata   ConnectionMetadata
 	callbacks  map[string][]SocketEventCallback
 	connId     string
 	respWriter http.ResponseWriter
@@ -158,6 +180,10 @@ func (c *SocketConn) Connections() []Connection {
 	return namespace.Connections()
 }
 
+func (c *SocketConn) Metadata() ConnectionMetadata {
+	return c.metadata
+}
+
 func (c *SocketConn) Join(roomName string) {
 	c.ns = roomName
 	c.nsHandler.AddToNamespace(roomName, c)
@@ -201,6 +227,7 @@ func NewConnectionWithUUID(uuid string, nsHandler NamespaceHandler, ws *websocke
 	return &SocketConn{
 		Conn: ws,
 
+		metadata:   NewConnectionMetadata(),
 		respWriter: w,
 		httpReq:    r,
 		connId:     uuid,

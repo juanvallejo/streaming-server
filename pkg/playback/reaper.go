@@ -35,7 +35,7 @@ func reap(reaper *PlaybackReaper, handler StreamPlaybackHandler, stop chan bool)
 		for _, s := range handler.GetStreamPlaybacks() {
 			if handler.IsReapable(s) && time.Now().Sub(s.GetLastUpdated()) > reaper.maxStalePlaybackObjectLifetime {
 				if handler.ReapStreamPlayback(s) {
-					log.Printf("INF REAPER room with id %q has become a candidate for reaping after %v. Reaping...\n", s.id, time.Now().Sub(s.GetLastUpdated()))
+					log.Printf("INF REAPER room with name %q has become a candidate for reaping after %v. Reaping...\n", s.name, time.Now().Sub(s.GetLastUpdated()))
 				}
 			}
 		}

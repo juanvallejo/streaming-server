@@ -7,9 +7,12 @@ import (
 	"time"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
+	"github.com/juanvallejo/streaming-server/pkg/playback/admin"
 	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
 	"github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
+	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -42,8 +45,9 @@ type StreamPlaybackState int
 // stream - there are one or more StreamPlayback instances
 // for every one stream
 type StreamPlayback struct {
-	id           string
+	name         string
 	queueHandler queue.QueueHandler
+	adminPicker  admin.AdminPicker
 	stream       stream.Stream
 	startedBy    string
 	timer        *Timer
@@ -54,8 +58,24 @@ type StreamPlayback struct {
 	state StreamPlaybackState
 }
 
+// Cleanup handles resource cleanup for room resources
+func (p *StreamPlayback) Cleanup() {
+	// remove room ref from the current stream
+	if p.stream != nil {
+		p.stream.Metadata().RemoveParentRef(p)
+		p.stream.Metadata().RemoveLabelledRef(p.UUID())
+	}
+
+	p.adminPicker.Cancel()
+	p.timer.Stop()
+	p.timer.callbacks = []TimerCallback{}
+	p.timer = nil
+	p.ClearQueue()
+	p.stream = nil
+}
+
 func (p *StreamPlayback) UUID() string {
-	return p.id
+	return p.name
 }
 
 func (p *StreamPlayback) SetState(s StreamPlaybackState) {
@@ -65,6 +85,61 @@ func (p *StreamPlayback) SetState(s StreamPlaybackState) {
 // State returns the current stream-playback state
 func (p *StreamPlayback) State() StreamPlaybackState {
 	return p.state
+}
+
+// HandleAdminDeparture receives a departing connection and determines if at least
+// one other connection in its namespace is bound to the admin role. If no other
+// admins are found, the adminHandler is notified.
+func (p *StreamPlayback) HandleDisconnection(conn connection.Connection, authorizer rbac.Authorizer, handler client.SocketClientHandler) {
+	if authorizer == nil {
+		return
+	}
+
+	// if a candidate has already been chosen, only
+	// continue if that candidate is no longer available.
+	if p.adminPicker.Candidate() != nil {
+		_, err := handler.GetClient(p.adminPicker.Candidate().UUID())
+		if conn.UUID() != p.adminPicker.Candidate().UUID() && err == nil {
+			return
+		}
+
+		log.Printf("INF PLAYBACK ADMIN-PICKER previously picked admin candidate no longer available. Re-picking...\n")
+	}
+
+	var adminBinding rbac.RoleBinding
+	for _, b := range authorizer.Bindings() {
+		if b.Role().Name() == rbac.ADMIN_ROLE {
+			adminBinding = b
+			break
+		}
+	}
+	if adminBinding == nil {
+		return
+	}
+
+	conns := []connection.Connection{}
+	for _, c := range conn.Connections() {
+		if c.UUID() == conn.UUID() {
+			continue
+		}
+
+		conns = append(conns, c)
+		for _, u := range adminBinding.Subjects() {
+			if u.UUID() == c.UUID() {
+				return
+			}
+		}
+	}
+
+	if len(conns) == 0 {
+		p.adminPicker.Cancel()
+		return
+	}
+
+	log.Printf("INF PLAYBACK ADMIN-PICKER detected no admins remaining in room. Initializing election process...\n")
+
+	// no admin found, notify adminHandler
+	p.adminPicker.Pick(conns, authorizer, handler)
 }
 
 // UpdateStartedBy receives a client and updates the
@@ -96,21 +171,6 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 	}
 
 	return false
-}
-
-// Cleanup handles resource cleanup for room resources
-func (p *StreamPlayback) Cleanup() {
-	// remove room ref from the current stream
-	if p.stream != nil {
-		p.stream.Metadata().RemoveParentRef(p)
-		p.stream.Metadata().RemoveLabelledRef(p.UUID())
-	}
-
-	p.timer.Stop()
-	p.timer.callbacks = []TimerCallback{}
-	p.timer = nil
-	p.ClearQueue()
-	p.stream = nil
 }
 
 func (p *StreamPlayback) Pause() error {
@@ -193,6 +253,10 @@ func (p *StreamPlayback) ClearUserQueue(userQueue queue.AggregatableQueue) {
 	}
 
 	userQueue.Clear()
+}
+
+func (p *StreamPlayback) AdminPicker() admin.AdminPicker {
+	return p.adminPicker
 }
 
 func (p *StreamPlayback) GetQueue() queue.RoundRobinQueue {
@@ -385,9 +449,10 @@ func NewStreamPlayback(id string) *StreamPlayback {
 	}
 
 	return &StreamPlayback{
-		id:           id,
+		name:         id,
 		timer:        NewTimer(),
 		queueHandler: queue.NewQueueHandler(queue.NewRoundRobinQueue()),
+		adminPicker:  admin.NewLeastRecentAdminPicker(),
 		lastUpdated:  time.Now(),
 		state:        PLAYBACK_STATE_NOT_STARTED,
 	}

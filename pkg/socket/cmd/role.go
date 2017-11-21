@@ -127,7 +127,7 @@ func NewCmdRole() SocketCommand {
 	}
 }
 
-func addRole(authorizer rbac.Authorizer, subject rbac.Subject, roleName, subjectName string) error {
+func addRole(authorizer rbac.Authorizer, subject *client.Client, roleName, subjectName string) error {
 	role, exists := authorizer.Role(roleName)
 	if !exists {
 		return fmt.Errorf("error: role %q not found", roleName)
@@ -147,6 +147,10 @@ func addRole(authorizer rbac.Authorizer, subject rbac.Subject, roleName, subject
 
 		// found binding for role, but subject not bound; add
 		b.AddSubject(subject)
+		subject.BroadcastSystemMessageTo(fmt.Sprintf("You have been assigned to the %q role", role.Name()))
+		subject.BroadcastAll("info_userlistupdated", &client.Response{
+			Id: subject.UUID(),
+		})
 		return nil
 	}
 
@@ -154,5 +158,10 @@ func addRole(authorizer rbac.Authorizer, subject rbac.Subject, roleName, subject
 
 	// no binding exists for given role, create...
 	authorizer.Bind(role, subject)
+
+	subject.BroadcastSystemMessageTo(fmt.Sprintf("You have been assigned to the %q role", role.Name()))
+	subject.BroadcastAll("info_userlistupdated", &client.Response{
+		Id: subject.UUID(),
+	})
 	return nil
 }

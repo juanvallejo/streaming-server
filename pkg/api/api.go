@@ -5,10 +5,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/discovery"
 	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
+	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -32,6 +34,7 @@ type Handler interface {
 type ApiHandler struct {
 	endpoints   map[string]endpoint.ApiEndpoint
 	connections connection.ConnectionHandler
+	playback    playback.StreamPlaybackHandler
 }
 
 func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,15 +43,16 @@ func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	log.Printf("INF API Serving request from %s for endpoint %q\n", ip, r.URL.String())
+	log.Printf("INF API Serving request from %s for endpoint %q\n", ip, r.URL.Path)
 
-	h.HandleEndpoint(r.URL.Path, w, r)
+	h.HandleEndpoint(r.URL, w, r)
 }
 
-func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.Request) {
+func (h *ApiHandler) HandleEndpoint(url *url.URL, w http.ResponseWriter, r *http.Request) {
+	path := url.Path
+
 	// sanitize api string; if it ends in a "/", remove...
-	l := path[len(path)-1]
-	if string(l) == "/" {
+	if string(path[len(path)-1]) == "/" {
 		path = path[0 : len(path)-1]
 	}
 
@@ -72,7 +76,7 @@ func (h *ApiHandler) HandleEndpoint(path string, w http.ResponseWriter, r *http.
 	root := "/" + segs[2] // segs[1] should be ApiPrefix
 
 	if e, exists := h.endpoints[ApiPrefix+root]; exists {
-		e.Handle(h.connections, segs[2:], w, r)
+		e.Handle(h.connections, h.playback, segs[2:], w, r)
 		return
 	}
 
@@ -89,10 +93,11 @@ func (h *ApiHandler) RegisterEndpoint(e endpoint.ApiEndpoint) {
 
 }
 
-func NewHandler(connHandler connection.ConnectionHandler) Handler {
+func NewHandler(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler) Handler {
 	handler := &ApiHandler{
 		endpoints:   make(map[string]endpoint.ApiEndpoint),
 		connections: connHandler,
+		playback:    playbackHandler,
 	}
 	handler.registerDefaultEndpoints()
 	return handler
