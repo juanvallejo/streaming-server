@@ -72,9 +72,17 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 	// endpoint the client should hit in order to save roles in cookie
 	targetEndpoint := fmt.Sprintf("/api/auth/cookie?%s=%s", endpoint.CONN_ID_KEY, subject.UUID())
 
+	role, exists := authorizer.Role(roleName)
+	if !exists {
+		return "", fmt.Errorf("error: role %q not found", roleName)
+	}
+
+	// TODO: have an array of subjects and map "*" to all
+	// connections in the room. Iterate through each subject as needed
+
 	switch args[0] {
 	case "set":
-		if err := addRole(authorizer, subject, roleName, subjectName); err != nil {
+		if err := addRole(authorizer, role, subject); err != nil {
 			return "", err
 		}
 
@@ -90,7 +98,7 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 		util.BroadcastHttpRequest(subject, targetEndpoint)
 		return fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName), nil
 	case "add":
-		if err := addRole(authorizer, subject, roleName, subjectName); err != nil {
+		if err := addRole(authorizer, role, subject); err != nil {
 			return "", err
 		}
 
@@ -127,13 +135,7 @@ func NewCmdRole() SocketCommand {
 	}
 }
 
-func addRole(authorizer rbac.Authorizer, subject *client.Client, roleName, subjectName string) error {
-	role, exists := authorizer.Role(roleName)
-	if !exists {
-		return fmt.Errorf("error: role %q not found", roleName)
-	}
-
-	// check if subject already bound to role
+func addRole(authorizer rbac.Authorizer, role rbac.Role, subject *client.Client) error {
 	for _, b := range authorizer.Bindings() {
 		if b.Role().Name() != role.Name() {
 			continue
@@ -141,7 +143,7 @@ func addRole(authorizer rbac.Authorizer, subject *client.Client, roleName, subje
 
 		for _, s := range b.Subjects() {
 			if s.UUID() == subject.UUID() {
-				return fmt.Errorf("error: subject %q is already bound to role %q", subjectName, roleName)
+				return fmt.Errorf("error: subject %q is already bound to role %q", subject.GetUsernameOrId(), role.Name())
 			}
 		}
 
@@ -154,7 +156,7 @@ func addRole(authorizer rbac.Authorizer, subject *client.Client, roleName, subje
 		return nil
 	}
 
-	log.Printf("INF SOCKET CMD ROLE client requested a binding for role %q but one was not found. Creating...\n", roleName)
+	log.Printf("INF SOCKET CMD ROLE client requested a binding for role %q but one was not found. Creating...\n", role.Name())
 
 	// no binding exists for given role, create...
 	authorizer.Bind(role, subject)
