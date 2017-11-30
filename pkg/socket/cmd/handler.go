@@ -25,7 +25,7 @@ type SocketCommandHandler interface {
 	// ExecuteCommand receives a command's unique name, obtains
 	// the command from the handler's internal map, and calls the
 	// SocketCommand's execute method
-	ExecuteCommand(string, []string, *client.Client, client.SocketClientHandler, playback.StreamPlaybackHandler, stream.StreamHandler) (string, error)
+	ExecuteCommand(string, []string, *client.Client, client.SocketClientHandler, playback.PlaybackHandler, stream.StreamHandler) (string, error)
 }
 
 // Handler implements SocketCommandHandler
@@ -71,7 +71,7 @@ func (h *Handler) Aliases() map[string]SocketCommand {
 	return h.aliases
 }
 
-func (h *Handler) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *Handler) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	command, exists := resolveCommandAlias(cmdRoot, h.commands, h.aliases)
 	if !exists {
 		return "", fmt.Errorf("error: that command does not exist")
@@ -106,7 +106,7 @@ func (c *HandlerWithRBAC) Authorizer() rbac.Authorizer {
 	return c.AccessController
 }
 
-func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (c *HandlerWithRBAC) ExecuteCommand(cmdRoot string, args []string, client *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	command, exists := resolveCommandAlias(cmdRoot, c.Commands(), c.Aliases())
 	if !exists {
 		return "", fmt.Errorf("error: that command does not exist")
@@ -212,6 +212,7 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		"queue/order/room/*",
 		"queue/order/all",
 		"queue/order/all/*",
+		"queue/order/next/*",
 	})
 	roleEdit := rbac.NewRule("Add, replace, or remove roles for a subject", []string{
 		"role/set/*",

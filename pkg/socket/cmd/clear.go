@@ -20,7 +20,7 @@ var (
 	clear_aliases = []string{}
 )
 
-func (h *ClearCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *ClearCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	user.BroadcastChatActionTo("clearView", nil)
 	return "Clearing chat window messages...", nil
 }

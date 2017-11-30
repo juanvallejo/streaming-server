@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -19,7 +18,7 @@ type ApiEndpoint interface {
 	// api request path, minus the api request root ("/api/"). Hence for a request
 	// path "/api/stream/verb/noun", the "segments" received would be:
 	//   ["stream", "verb", "noun"].
-	Handle(connection.ConnectionHandler, playback.StreamPlaybackHandler, []string, http.ResponseWriter, *http.Request)
+	Handle(connection.ConnectionHandler, []string, http.ResponseWriter, *http.Request)
 }
 
 type ApiEndpointSchema struct {

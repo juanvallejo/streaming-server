@@ -3,43 +3,45 @@ package playback
 import (
 	"log"
 
+	"github.com/juanvallejo/streaming-server/pkg/socket/client"
+	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
-type StreamPlaybackHandler interface {
-	// NewStreamPlayback receives a playback id and instantiates a new StreamPlayback
+type PlaybackHandler interface {
+	// NewPlayback receives a playback id and instantiates a new Playback
 	// object used to keep track of individual user-created stream sessions.
 	// A playback id should be a fully-qualified room name.
-	NewStreamPlayback(string) *StreamPlayback
-	// GetStreamPlayback receives a StreamPlayback id (usually a fully qualified room name)
-	// and retrieves a StreamPlayback object corresponding to that room.
-	// Returns a boolean (false) if a StreamPlayback object does not exist by the given roomName.
-	GetStreamPlayback(string) (*StreamPlayback, bool)
-	// GetStreamPlaybacks returns a list of all composed *StreamPlayback objects
-	GetStreamPlaybacks() []*StreamPlayback
-	// ReapStreamPlayback receives a *StreamPlayback and removes it from the list of composed *StreamPlaybacks
-	ReapStreamPlayback(*StreamPlayback) bool
-	// IsReapable receives a StreamPlayback and determines if it is reapable
+	NewPlayback(connection.Namespace, rbac.Authorizer, client.SocketClientHandler) *Playback
+	// PlaybackByNamespace receives a connection.Namespace and retrieves a Playback object
+	// corresponding to that room. Returns a boolean (false) if a Playback object
+	// does not exist by the given roomName.
+	PlaybackByNamespace(connection.Namespace) (*Playback, bool)
+	// Playbacks returns a list of all composed *Playback objects
+	Playbacks() []*Playback
+	// ReapPlayback receives a *Playback and removes it from the list of composed *StreamPlaybacks
+	ReapPlayback(*Playback) bool
+	// IsReapable receives a Playback and determines if it is reapable
 	// based on whether or not its corresponding Namespace has any items left
-	IsReapable(*StreamPlayback) bool
+	IsReapable(*Playback) bool
 }
 
 // Handler implements StreamPlaybackHandler
 type Handler struct {
 	isGarbageCollected bool
 	garbageCollector   *PlaybackReaper
-	// map of stream ids to StreamPlayback objects
-	streamplaybacks  map[string]*StreamPlayback
+	// map of stream ids to Playback objects
+	streamplaybacks  map[string]*Playback
 	namespaceHandler connection.NamespaceHandler
 }
 
-func (h *Handler) NewStreamPlayback(roomName string) *StreamPlayback {
-	s := NewStreamPlayback(roomName)
-	h.streamplaybacks[roomName] = s
+func (h *Handler) NewPlayback(ns connection.Namespace, authorizer rbac.Authorizer, clientHandler client.SocketClientHandler) *Playback {
+	s := NewPlaybackWithAdminPicker(ns, authorizer, clientHandler, h)
+	h.streamplaybacks[ns.Name()] = s
 	return s
 }
 
-func (h *Handler) ReapStreamPlayback(p *StreamPlayback) bool {
+func (h *Handler) ReapPlayback(p *Playback) bool {
 	if sp, exists := h.streamplaybacks[p.name]; exists {
 		sp.Cleanup()
 		delete(h.streamplaybacks, sp.name)
@@ -52,10 +54,10 @@ func (h *Handler) ReapStreamPlayback(p *StreamPlayback) bool {
 	return false
 }
 
-func (h *Handler) IsReapable(p *StreamPlayback) bool {
+func (h *Handler) IsReapable(p *Playback) bool {
 	ns, exists := h.namespaceHandler.NamespaceByName(p.UUID())
 	if !exists {
-		// if a corresponding namespace for the StreamPlayback
+		// if a corresponding namespace for the Playback
 		// does not exist, mark as reapable
 		return true
 	}
@@ -63,16 +65,16 @@ func (h *Handler) IsReapable(p *StreamPlayback) bool {
 	return len(ns.Connections()) == 0
 }
 
-func (h *Handler) GetStreamPlayback(roomName string) (*StreamPlayback, bool) {
-	if sPlayback, exists := h.streamplaybacks[roomName]; exists {
+func (h *Handler) PlaybackByNamespace(ns connection.Namespace) (*Playback, bool) {
+	if sPlayback, exists := h.streamplaybacks[ns.Name()]; exists {
 		return sPlayback, true
 	}
 
 	return nil, false
 }
 
-func (h *Handler) GetStreamPlaybacks() []*StreamPlayback {
-	playbacks := []*StreamPlayback{}
+func (h *Handler) Playbacks() []*Playback {
+	playbacks := []*Playback{}
 	for _, p := range h.streamplaybacks {
 		playbacks = append(playbacks, p)
 	}
@@ -95,18 +97,18 @@ func (h *Handler) initGarbageCollector() {
 	log.Printf("INF PlaybackHandler GarbageCollection started.\n")
 }
 
-func NewHandler(nsHandler connection.NamespaceHandler) StreamPlaybackHandler {
+func NewHandler(nsHandler connection.NamespaceHandler) PlaybackHandler {
 	return &Handler{
 		namespaceHandler: nsHandler,
-		streamplaybacks:  make(map[string]*StreamPlayback),
+		streamplaybacks:  make(map[string]*Playback),
 	}
 }
 
-func NewGarbageCollectedHandler(nsHandler connection.NamespaceHandler) StreamPlaybackHandler {
+func NewGarbageCollectedHandler(nsHandler connection.NamespaceHandler) PlaybackHandler {
 	h := &Handler{
 		namespaceHandler: nsHandler,
 		garbageCollector: NewPlaybackReaper(),
-		streamplaybacks:  make(map[string]*StreamPlayback),
+		streamplaybacks:  make(map[string]*Playback),
 	}
 	h.initGarbageCollector()
 	return h

@@ -16,7 +16,7 @@ const (
 	DEBUG_USAGE       = "Usage: /" + DEBUG_NAME + " &lt;refresh&gt;"
 )
 
-func (h *DebugCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *DebugCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
 		return h.usage, nil
 	}

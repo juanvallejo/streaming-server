@@ -22,7 +22,7 @@ const (
 	ROLE_USAGE       = "Usage: /" + ROLE_NAME + " &lt;add | set | remove&gt; &lt;role&gt; &lt;subject&gt;"
 )
 
-func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	// TODO: move to api - send client event requesting http request against api endpoint
 	// once authorizer is moved outside of pkg/socket/cmd/rbac
 
@@ -112,6 +112,11 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 			removed := b.RemoveSubject(subject)
 			if removed {
+				subject.BroadcastSystemMessageTo(fmt.Sprintf("You have been removed from the %q role", role.Name()))
+				subject.BroadcastAll("info_userlistupdated", &client.Response{
+					Id: subject.UUID(),
+				})
+
 				util.BroadcastHttpRequest(subject, targetEndpoint)
 				return fmt.Sprintf("user %q unbound from role %q", subjectName, roleName), nil
 			}

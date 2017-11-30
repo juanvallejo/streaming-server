@@ -28,7 +28,7 @@ var (
 	subtitles_aliases = []string{"subs"}
 )
 
-func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
 		return h.usage, nil
 	}
@@ -45,7 +45,7 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 	}
 
 	currentDir := util.GetCurrentDirectory()
-	subFile := roomToSubsFile(userRoom)
+	subFile := roomToSubsFile(userRoom.Name())
 
 	if args[0] == "on" {
 		_, err := os.Stat(currentDir + "/../../" + SUBTITLES_FILE_ROOT + subFile)

@@ -27,7 +27,7 @@ const (
 
 var mux sync.Mutex
 
-func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
 		return h.usage, nil
 	}
@@ -43,7 +43,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
-	sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom)
+	sPlayback, sPlaybackExists := playbackHandler.PlaybackByNamespace(userRoom)
 	if !sPlaybackExists {
 		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.UUID(), username, userRoom)
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")
@@ -74,7 +74,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", queue.ErrMaxQueueSizeExceeded
 		}
 
-		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.StreamPlayback) func([]byte, bool, error) {
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.Playback) func([]byte, bool, error) {
 			return func(data []byte, created bool, err error) {
 				// if a new stream was created, sync fetched metadata with client
 				if !created {
@@ -530,7 +530,7 @@ func calculateQueueOrder(sourceIdx, destIdx, length int) ([]int, error) {
 	return append(newOrder, sourceIdx), nil
 }
 
-func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
+func sendQueueSyncEvent(user *client.Client, sPlayback *playback.Playback) error {
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
 		username = user.UUID()
@@ -551,7 +551,7 @@ func sendQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback)
 }
 
 // sendUserQueueSyncEvent sends a queue stacksync event only to the user requesting data
-func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.StreamPlayback) error {
+func sendUserQueueSyncEvent(user *client.Client, sPlayback *playback.Playback) error {
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
 		username = user.UUID()

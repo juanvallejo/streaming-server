@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
@@ -22,7 +21,7 @@ type AuthEndpoint struct {
 }
 
 // sets a cookie with rbac roles from the given connection id
-func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler, segments []string, w http.ResponseWriter, r *http.Request) {
+func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, segments []string, w http.ResponseWriter, r *http.Request) {
 	if len(segments) < 2 {
 		HandleEndpointError(fmt.Errorf("unimplemented endpoint"), w)
 		return
@@ -62,7 +61,7 @@ func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, playback
 	case segments[1] == "set":
 		fallthrough
 	case segments[1] == "init":
-		handleInitReq(conn, connHandler, playbackHandler, w, r)
+		handleInitReq(conn, connHandler, w, r)
 		return
 	}
 
@@ -72,7 +71,7 @@ func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, playback
 // handleInitReq initializes a connection's rbac roles from an auth cookie
 // or creates an auth cookie with default rbac roles if one does not exist.
 // roles are then bound to the given connection id.
-func handleInitReq(conn connection.Connection, handler connection.ConnectionHandler, rooms playback.StreamPlaybackHandler, w http.ResponseWriter, r *http.Request) {
+func handleInitReq(conn connection.Connection, handler connection.ConnectionHandler, w http.ResponseWriter, r *http.Request) {
 	ns, exists := conn.Namespace()
 	if !exists {
 		HandleEndpointError(fmt.Errorf("the connection specified has not been bound to a namespace"), w)
@@ -91,24 +90,8 @@ func handleInitReq(conn connection.Connection, handler connection.ConnectionHand
 		return
 	}
 
-	var room *playback.StreamPlayback
-	if len(ns.Name()) > 0 {
-		r, exists := rooms.GetStreamPlayback(ns.Name())
-		if exists {
-			room = r
-		}
-	}
-
 	// bind roles to connection
 	for _, r := range roles {
-		// if at least one of the admin roles being bound to
-		// the subject is an "admin" role, cancel any admin picks
-		// it may be in the process of performing.
-		if room != nil && r.Name() == rbac.ADMIN_ROLE {
-			log.Printf("INF API AUTHZ ADMIN-PICKER connection authorization determined %q role; cancelling room admin candidate pick...", "admin")
-			room.AdminPicker().Cancel()
-		}
-
 		if handler.Authorizer().Bind(r, conn) {
 			log.Printf("INF API AUTHZ bound role %q to connection with id (%s)", r.Name(), conn.UUID())
 		}

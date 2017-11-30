@@ -19,7 +19,7 @@ const (
 	WHOAMI_USAGE       = "Usage: /" + WHOAMI_NAME
 )
 
-func (h *WhoamiCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *WhoamiCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if name, hasName := user.GetUsername(); hasName {
 		return name, nil
 	}

@@ -28,7 +28,7 @@ var (
 	stream_aliases = []string{}
 )
 
-func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	if len(args) == 0 {
 		return h.usage, nil
 	}
@@ -44,7 +44,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		return "", fmt.Errorf("error: you must be in a stream to control stream playback.")
 	}
 
-	sPlayback, sPlaybackExists := playbackHandler.GetStreamPlayback(userRoom)
+	sPlayback, sPlaybackExists := playbackHandler.PlaybackByNamespace(userRoom)
 	if !sPlaybackExists {
 		log.Printf("ERR SOCKET CLIENT unable to associate client %q (%s) in room %q with any stream playback objects", user.UUID(), username, userRoom)
 		return "", fmt.Errorf("error: no stream playback is currently loaded for your room")

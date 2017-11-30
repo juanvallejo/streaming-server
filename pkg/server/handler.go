@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api"
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
@@ -16,11 +15,10 @@ import (
 // RequestHandler implements http.Handler and provides additional websocket request handling.
 // It also stores generic path handlers for request not matching a specific set of criteria.
 type RequestHandler struct {
-	router          *RequestRouter
-	paths           map[string]path.Path
-	playbackHandler playback.StreamPlaybackHandler
-	sockReqHandler  *socket.Handler
-	apiHandler      api.Handler
+	router         *RequestRouter
+	paths          map[string]path.Path
+	sockReqHandler *socket.Handler
+	apiHandler     api.Handler
 }
 
 // ServeHTTP handles incoming http requests. A request is handled based on its
@@ -124,13 +122,12 @@ func (h *RequestHandler) RegisterPath(p path.Path) {
 	h.paths[p.GetUrl()] = p
 }
 
-func NewRequestHandler(socketRequestHandler *socket.Handler, connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler) *RequestHandler {
+func NewRequestHandler(socketRequestHandler *socket.Handler, connHandler connection.ConnectionHandler) *RequestHandler {
 	handler := &RequestHandler{
-		router:          NewRequestRouter(),
-		paths:           make(map[string]path.Path),
-		sockReqHandler:  socketRequestHandler,
-		playbackHandler: playbackHandler,
-		apiHandler:      api.NewHandler(connHandler, playbackHandler),
+		router:         NewRequestRouter(),
+		paths:          make(map[string]path.Path),
+		sockReqHandler: socketRequestHandler,
+		apiHandler:     api.NewHandler(connHandler),
 	}
 	addRequestHandlers(handler)
 	return handler

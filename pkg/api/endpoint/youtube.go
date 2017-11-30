@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/config"
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -24,7 +23,7 @@ type YoutubeEndpoint struct {
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
-func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler, segments []string, w http.ResponseWriter, r *http.Request) {
+func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segments []string, w http.ResponseWriter, r *http.Request) {
 	if len(segments) < 2 {
 		HandleEndpointError(fmt.Errorf("unimplemented endpoint"), w)
 		return

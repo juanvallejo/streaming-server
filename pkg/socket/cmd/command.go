@@ -13,7 +13,7 @@ type SocketCommand interface {
 	// returns an error if a problem occurs during
 	// command execution, or a string ("status")
 	// containing the return value for the command
-	Execute(SocketCommandHandler, []string, *client.Client, client.SocketClientHandler, playback.StreamPlaybackHandler, stream.StreamHandler) (string, error)
+	Execute(SocketCommandHandler, []string, *client.Client, client.SocketClientHandler, playback.PlaybackHandler, stream.StreamHandler) (string, error)
 	// Name returns the command's unique string identifier
 	Name() string
 	// GetDescription returns the command's summarized readme
@@ -36,7 +36,7 @@ type Command struct {
 	aliases []string
 }
 
-func (c *Command) Execute(cmdHandler SocketCommandHandler, args []string, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (c *Command) Execute(cmdHandler SocketCommandHandler, args []string, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	return "", fmt.Errorf("unimplemented command.")
 }
 

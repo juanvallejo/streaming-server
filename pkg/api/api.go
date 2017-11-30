@@ -10,7 +10,6 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/api/discovery"
 	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
-	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -34,7 +33,6 @@ type Handler interface {
 type ApiHandler struct {
 	endpoints   map[string]endpoint.ApiEndpoint
 	connections connection.ConnectionHandler
-	playback    playback.StreamPlaybackHandler
 }
 
 func (h *ApiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +74,7 @@ func (h *ApiHandler) HandleEndpoint(url *url.URL, w http.ResponseWriter, r *http
 	root := "/" + segs[2] // segs[1] should be ApiPrefix
 
 	if e, exists := h.endpoints[ApiPrefix+root]; exists {
-		e.Handle(h.connections, h.playback, segs[2:], w, r)
+		e.Handle(h.connections, segs[2:], w, r)
 		return
 	}
 
@@ -93,11 +91,10 @@ func (h *ApiHandler) RegisterEndpoint(e endpoint.ApiEndpoint) {
 
 }
 
-func NewHandler(connHandler connection.ConnectionHandler, playbackHandler playback.StreamPlaybackHandler) Handler {
+func NewHandler(connHandler connection.ConnectionHandler) Handler {
 	handler := &ApiHandler{
 		endpoints:   make(map[string]endpoint.ApiEndpoint),
 		connections: connHandler,
-		playback:    playbackHandler,
 	}
 	handler.registerDefaultEndpoints()
 	return handler

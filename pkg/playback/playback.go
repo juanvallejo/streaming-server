@@ -7,7 +7,6 @@ import (
 	"time"
 
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
-	"github.com/juanvallejo/streaming-server/pkg/playback/admin"
 	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
 	"github.com/juanvallejo/streaming-server/pkg/playback/util"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
@@ -21,7 +20,7 @@ const (
 	// streams have been played (or have started to play)
 	// since the room's creation, regardless of any items
 	// that may currently exist in the queue.
-	PLAYBACK_STATE_NOT_STARTED StreamPlaybackState = iota
+	PLAYBACK_STATE_NOT_STARTED PlaybackState = iota
 
 	// A playback state of "STARTED" indicates that at least
 	// one stream has been queued, and it is either playing,
@@ -38,35 +37,39 @@ const (
 // PlaybackStreamMetadataCallback is a callback function called once metadata for a stream has been fetched
 type PlaybackStreamMetadataCallback func(data []byte, created bool, err error)
 
-// StreamPlaybackState represents the current state of the room's playback
-type StreamPlaybackState int
+// PlaybackState represents the current state of the room's playback
+type PlaybackState int
 
-// StreamPlayback represents playback status for a given
+// Playback represents playback status for a given
 // stream - there are one or more StreamPlayback instances
 // for every one stream
-type StreamPlayback struct {
-	name         string
-	queueHandler queue.QueueHandler
-	adminPicker  admin.AdminPicker
-	stream       stream.Stream
-	startedBy    string
-	timer        *Timer
-	lastUpdated  time.Time
+type Playback struct {
+	name               string
+	queueHandler       queue.QueueHandler
+	adminPicker        AdminPicker
+	stream             stream.Stream
+	startedBy          string
+	timer              *Timer
+	lastUpdated        time.Time
+	lastAdminDeparture time.Time
 
 	// State indicates the current state of the
-	// room's StreamPlayback
-	state StreamPlaybackState
+	// room's Playback
+	state PlaybackState
 }
 
 // Cleanup handles resource cleanup for room resources
-func (p *StreamPlayback) Cleanup() {
+func (p *Playback) Cleanup() {
 	// remove room ref from the current stream
 	if p.stream != nil {
 		p.stream.Metadata().RemoveParentRef(p)
 		p.stream.Metadata().RemoveLabelledRef(p.UUID())
 	}
 
-	p.adminPicker.Cancel()
+	if p.adminPicker != nil {
+		p.adminPicker.Stop()
+	}
+
 	p.timer.Stop()
 	p.timer.callbacks = []TimerCallback{}
 	p.timer = nil
@@ -74,36 +77,25 @@ func (p *StreamPlayback) Cleanup() {
 	p.stream = nil
 }
 
-func (p *StreamPlayback) UUID() string {
+func (p *Playback) UUID() string {
 	return p.name
 }
 
-func (p *StreamPlayback) SetState(s StreamPlaybackState) {
+func (p *Playback) SetState(s PlaybackState) {
 	p.state = s
 }
 
 // State returns the current stream-playback state
-func (p *StreamPlayback) State() StreamPlaybackState {
+func (p *Playback) State() PlaybackState {
 	return p.state
 }
 
 // HandleAdminDeparture receives a departing connection and determines if at least
 // one other connection in its namespace is bound to the admin role. If no other
 // admins are found, the adminHandler is notified.
-func (p *StreamPlayback) HandleDisconnection(conn connection.Connection, authorizer rbac.Authorizer, handler client.SocketClientHandler) {
+func (p *Playback) HandleDisconnection(conn connection.Connection, authorizer rbac.Authorizer, handler client.SocketClientHandler) {
 	if authorizer == nil {
 		return
-	}
-
-	// if a candidate has already been chosen, only
-	// continue if that candidate is no longer available.
-	if p.adminPicker.Candidate() != nil {
-		_, err := handler.GetClient(p.adminPicker.Candidate().UUID())
-		if conn.UUID() != p.adminPicker.Candidate().UUID() && err == nil {
-			return
-		}
-
-		log.Printf("INF PLAYBACK ADMIN-PICKER previously picked admin candidate no longer available. Re-picking...\n")
 	}
 
 	var adminBinding rbac.RoleBinding
@@ -117,34 +109,17 @@ func (p *StreamPlayback) HandleDisconnection(conn connection.Connection, authori
 		return
 	}
 
-	conns := []connection.Connection{}
-	for _, c := range conn.Connections() {
-		if c.UUID() == conn.UUID() {
-			continue
-		}
-
-		conns = append(conns, c)
-		for _, u := range adminBinding.Subjects() {
-			if u.UUID() == c.UUID() {
-				return
-			}
+	for _, admin := range adminBinding.Subjects() {
+		if admin.UUID() == conn.UUID() {
+			p.lastAdminDeparture = time.Now()
+			break
 		}
 	}
-
-	if len(conns) == 0 {
-		p.adminPicker.Cancel()
-		return
-	}
-
-	log.Printf("INF PLAYBACK ADMIN-PICKER detected no admins remaining in room. Initializing election process...\n")
-
-	// no admin found, notify adminHandler
-	p.adminPicker.Pick(conns, authorizer, handler)
 }
 
 // UpdateStartedBy receives a client and updates the
 // startedBy field with the client's current username
-func (p *StreamPlayback) UpdateStartedBy(name string) {
+func (p *Playback) UpdateStartedBy(name string) {
 	p.startedBy = name
 }
 
@@ -153,7 +128,7 @@ func (p *StreamPlayback) UpdateStartedBy(name string) {
 // Returns a bool (true) if the client received contains
 // old info matching the one stored by the playback handler,
 // and such info has been since updated in the client.
-func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
+func (p *Playback) RefreshInfoFromClient(c *client.Client) bool {
 	cOldUser, hasOldUser := c.GetPreviousUsername()
 	if !hasOldUser {
 		return false
@@ -173,53 +148,57 @@ func (p *StreamPlayback) RefreshInfoFromClient(c *client.Client) bool {
 	return false
 }
 
-func (p *StreamPlayback) Pause() error {
+func (p *Playback) Pause() error {
 	p.SetLastUpdated(time.Now())
 	return p.timer.Pause()
 }
 
-func (p *StreamPlayback) Play() error {
+func (p *Playback) Play() error {
 	p.SetState(PLAYBACK_STATE_STARTED)
 	p.SetLastUpdated(time.Now())
 	return p.timer.Play()
 }
 
-func (p *StreamPlayback) Stop() error {
+func (p *Playback) Stop() error {
 	p.SetState(PLAYBACK_STATE_ENDED)
 	p.SetLastUpdated(time.Now())
 	return p.timer.Stop()
 }
 
-func (p *StreamPlayback) Reset() error {
+func (p *Playback) Reset() error {
 	p.SetLastUpdated(time.Now())
 	return p.timer.Set(0)
 }
 
-func (p *StreamPlayback) SetTime(newTime int) error {
+func (p *Playback) SetTime(newTime int) error {
 	p.SetLastUpdated(time.Now())
 	p.timer.Set(newTime)
 	return nil
 }
 
-func (p *StreamPlayback) GetTime() int {
+func (p *Playback) GetTime() int {
 	return p.timer.GetTime()
 }
 
-func (p *StreamPlayback) GetLastUpdated() time.Time {
+func (p *Playback) LastAdminDepartureTime() time.Time {
+	return p.lastAdminDeparture
+}
+
+func (p *Playback) GetLastUpdated() time.Time {
 	return p.lastUpdated
 }
 
-func (p *StreamPlayback) SetLastUpdated(t time.Time) {
+func (p *Playback) SetLastUpdated(t time.Time) {
 	p.lastUpdated = t
 }
 
 // OnTick calls the playback object's timer object and sets its
 // "tick" callback function; called every tick increment interval.
-func (p *StreamPlayback) OnTick(callback TimerCallback) {
+func (p *Playback) OnTick(callback TimerCallback) {
 	p.timer.OnTick(callback)
 }
 
-func (p *StreamPlayback) ClearQueue() error {
+func (p *Playback) ClearQueue() error {
 	var errs []error
 
 	p.queueHandler.Queue().Visit(func(item queue.QueueItem) {
@@ -247,7 +226,7 @@ func (p *StreamPlayback) ClearQueue() error {
 	return fmt.Errorf("%v", errMsg)
 }
 
-func (p *StreamPlayback) ClearUserQueue(userQueue queue.AggregatableQueue) {
+func (p *Playback) ClearUserQueue(userQueue queue.AggregatableQueue) {
 	for _, userQueueItem := range userQueue.List() {
 		p.ClearQueueItem(userQueue, userQueueItem)
 	}
@@ -255,17 +234,13 @@ func (p *StreamPlayback) ClearUserQueue(userQueue queue.AggregatableQueue) {
 	userQueue.Clear()
 }
 
-func (p *StreamPlayback) AdminPicker() admin.AdminPicker {
-	return p.adminPicker
-}
-
-func (p *StreamPlayback) GetQueue() queue.RoundRobinQueue {
+func (p *Playback) GetQueue() queue.RoundRobinQueue {
 	return p.queueHandler.Queue().(queue.RoundRobinQueue)
 }
 
 // PushUserQueue pushes a stream to the queue belonging to the given user
-// and adds the StreamPlayback object as the parentRef to the pushed stream.
-func (p *StreamPlayback) PushToQueue(userQueue queue.AggregatableQueue, s stream.Stream) error {
+// and adds the Playback object as the parentRef to the pushed stream.
+func (p *Playback) PushToQueue(userQueue queue.AggregatableQueue, s stream.Stream) error {
 	if err := p.queueHandler.PushToQueue(userQueue, s); err == nil {
 		// mark stream as unreapable while it is aggregated in the queue
 		if !s.Metadata().AddParentRef(p) {
@@ -276,8 +251,8 @@ func (p *StreamPlayback) PushToQueue(userQueue queue.AggregatableQueue, s stream
 }
 
 // PopUserQueue pops a stream from the queue belonging to the given user
-// and removes the StreamPlayback object from the popped stream's parentRef.
-func (p *StreamPlayback) ClearQueueItem(userQueue queue.AggregatableQueue, qi queue.QueueItem) error {
+// and removes the Playback object from the popped stream's parentRef.
+func (p *Playback) ClearQueueItem(userQueue queue.AggregatableQueue, qi queue.QueueItem) error {
 	err := p.queueHandler.PopFromQueue(userQueue, qi)
 	if err != nil {
 		return err
@@ -297,16 +272,16 @@ func (p *StreamPlayback) ClearQueueItem(userQueue queue.AggregatableQueue, qi qu
 }
 
 // GetStream returns a stream.Stream object containing current stream data
-// tied to the current StreamPlayback object, or a bool (false) if there
-// is no stream information currently loaded for the current StreamPlayback
-func (p *StreamPlayback) GetStream() (stream.Stream, bool) {
+// tied to the current Playback object, or a bool (false) if there
+// is no stream information currently loaded for the current Playback
+func (p *Playback) GetStream() (stream.Stream, bool) {
 	return p.stream, p.stream != nil
 }
 
 // SetStream receives a stream.Stream and sets it as the currently-playing stream
-func (p *StreamPlayback) SetStream(s stream.Stream) {
+func (p *Playback) SetStream(s stream.Stream) {
 	if p.stream != nil {
-		// remove StreamPlayback object from list of current stream's refs
+		// remove Playback object from list of current stream's refs
 		p.stream.Metadata().RemoveParentRef(p)
 		p.stream.Metadata().RemoveLabelledRef(p.UUID())
 	}
@@ -331,7 +306,7 @@ func (p *StreamPlayback) SetStream(s stream.Stream) {
 // and retrieves a corresponding stream.Stream, or creates a new one.
 // Calls callback once a cached stream is fetched, or metadata has been fetched for a
 // newly-created stream.
-func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Client, streamHandler stream.StreamHandler, callback PlaybackStreamMetadataCallback) (stream.Stream, error) {
+func (p *Playback) GetOrCreateStreamFromUrl(url string, user *client.Client, streamHandler stream.StreamHandler, callback PlaybackStreamMetadataCallback) (stream.Stream, error) {
 	if s, exists := streamHandler.GetStream(url); exists {
 		log.Printf("INF PLAYBACK found existing stream object with url %q, retrieving...", url)
 		callback([]byte{}, false, nil)
@@ -378,7 +353,7 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	s.Metadata().SetCreationSource(user)
 
 	// store queueing-user info as a labelled stream reference
-	// using the StreamPlayback's id as a namespaced key
+	// using the Playback's id as a namespaced key
 	s.Metadata().SetLabelledRef(p.UUID(), user)
 
 	// if created new stream, fetch its duration info
@@ -402,10 +377,10 @@ func (p *StreamPlayback) GetOrCreateStreamFromUrl(url string, user *client.Clien
 	return s, nil
 }
 
-// StreamPlaybackStatus is a serializable schema representing a summary of information
-// about the current state of the StreamPlayback.
+// PlaybackStatus is a serializable schema representing a summary of information
+// about the current state of the Playback.
 // Implements api.ApiCodec.
-type StreamPlaybackStatus struct {
+type PlaybackStatus struct {
 	QueueLength int          `json:"queueLength"`
 	StartedBy   string       `json:"startedBy"`
 	CreatedBy   string       `json:"createdBy"`
@@ -413,7 +388,7 @@ type StreamPlaybackStatus struct {
 	TimerStatus api.ApiCodec `json:"playback"`
 }
 
-func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
+func (s *PlaybackStatus) Serialize() ([]byte, error) {
 	b, err := json.Marshal(s)
 	if err != nil {
 		return []byte{}, err
@@ -424,7 +399,7 @@ func (s *StreamPlaybackStatus) Serialize() ([]byte, error) {
 
 // Returns a map compatible with json types
 // detailing the current playback status
-func (p *StreamPlayback) GetStatus() api.ApiCodec {
+func (p *Playback) GetStatus() api.ApiCodec {
 	var streamCodec api.ApiCodec
 	var createdBy string
 
@@ -434,7 +409,7 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 		createdBy = s.Metadata().GetCreationSource().GetSourceName()
 	}
 
-	return &StreamPlaybackStatus{
+	return &PlaybackStatus{
 		QueueLength: p.GetQueue().Size(),
 		StartedBy:   p.startedBy,
 		CreatedBy:   createdBy,
@@ -443,17 +418,32 @@ func (p *StreamPlayback) GetStatus() api.ApiCodec {
 	}
 }
 
-func NewStreamPlayback(id string) *StreamPlayback {
-	if len(id) == 0 {
-		panic("A playback id is required to instantiate a new playback")
+func NewPlaybackWithAdminPicker(ns connection.Namespace, authorizer rbac.Authorizer, clientHandler client.SocketClientHandler, playbackHandler PlaybackHandler) *Playback {
+	picker := NewLeastRecentAdminPicker()
+
+	p := NewPlayback(ns)
+	p.adminPicker = picker
+
+	if err := picker.Init(ns, authorizer, clientHandler, playbackHandler); err != nil {
+		log.Printf("WRN PLAYBACK ADMIN-PICKER unable to initialize admin picker: %v\n", err)
+	} else {
+		log.Printf("INF PLAYBACK ADMIN-PICKER started\n")
 	}
 
-	return &StreamPlayback{
-		name:         id,
-		timer:        NewTimer(),
-		queueHandler: queue.NewQueueHandler(queue.NewRoundRobinQueue()),
-		adminPicker:  admin.NewLeastRecentAdminPicker(),
-		lastUpdated:  time.Now(),
-		state:        PLAYBACK_STATE_NOT_STARTED,
+	return p
+}
+
+func NewPlayback(ns connection.Namespace) *Playback {
+	if len(ns.Name()) == 0 {
+		panic("A namespace with a name is required to instantiate a new playback")
+	}
+
+	return &Playback{
+		name:               ns.Name(),
+		timer:              NewTimer(),
+		queueHandler:       queue.NewQueueHandler(queue.NewRoundRobinQueue()),
+		lastUpdated:        time.Now(),
+		lastAdminDeparture: time.Time{},
+		state:              PLAYBACK_STATE_NOT_STARTED,
 	}
 }

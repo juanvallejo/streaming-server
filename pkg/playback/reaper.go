@@ -26,15 +26,15 @@ func (r *PlaybackReaper) Stop() {
 	r.stopChan <- true
 }
 
-func (r *PlaybackReaper) Init(handler StreamPlaybackHandler) {
+func (r *PlaybackReaper) Init(handler PlaybackHandler) {
 	go reap(r, handler, r.stopChan)
 }
 
-func reap(reaper *PlaybackReaper, handler StreamPlaybackHandler, stop chan bool) {
+func reap(reaper *PlaybackReaper, handler PlaybackHandler, stop chan bool) {
 	for {
-		for _, s := range handler.GetStreamPlaybacks() {
+		for _, s := range handler.Playbacks() {
 			if handler.IsReapable(s) && time.Now().Sub(s.GetLastUpdated()) > reaper.maxStalePlaybackObjectLifetime {
-				if handler.ReapStreamPlayback(s) {
+				if handler.ReapPlayback(s) {
 					log.Printf("INF REAPER room with name %q has become a candidate for reaping after %v. Reaping...\n", s.name, time.Now().Sub(s.GetLastUpdated()))
 				}
 			}

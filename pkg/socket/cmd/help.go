@@ -22,7 +22,7 @@ var (
 	help_aliases = []string{}
 )
 
-func (h *HelpCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
+func (h *HelpCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
 	output := "Commands help:<br />"
 	for _, command := range cmdHandler.Commands() {
 		output += fmt.Sprintf("<br /><span class='text-hl-name'>%s</span>: %s", command.Name(), command.GetDescription())

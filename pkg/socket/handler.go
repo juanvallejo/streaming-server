@@ -24,7 +24,7 @@ import (
 type Handler struct {
 	clientHandler   client.SocketClientHandler
 	CommandHandler  cmd.SocketCommandHandler
-	PlaybackHandler playback.StreamPlaybackHandler
+	PlaybackHandler playback.PlaybackHandler
 	StreamHandler   stream.StreamHandler
 
 	server *socketserver.Server
@@ -53,34 +53,13 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				From: userName,
 			})
 
-			room, exists := c.Namespace()
+			ns, exists := c.Namespace()
 			if exists {
-				sPlayback, sPlaybackExists := h.PlaybackHandler.GetStreamPlayback(room)
+				sPlayback, sPlaybackExists := h.PlaybackHandler.PlaybackByNamespace(ns)
 				if sPlaybackExists {
-					// if client has joined a room, and room still exists
-					// check if at least one other client is in that room. If not,
-					// mark room as reapable.
-					shouldReap := true
-
-					for _, conn := range c.Connections() {
-						x, err := h.clientHandler.GetClient(conn.UUID())
-						if err != nil {
-							continue
-						}
-
-						if c.UUID() == x.UUID() {
-							continue
-						}
-
-						shouldReap = false
-						break
-					}
-
-					if shouldReap {
-						// update room's last updated time to give buffer
-						// between last client leaving and room reaping.
-						sPlayback.SetLastUpdated(time.Now())
-					}
+					// update room's last updated time to give buffer
+					// between last client leaving and room reaping.
+					sPlayback.SetLastUpdated(time.Now())
 				}
 
 				// remove user from authorizer role-bindings
@@ -347,7 +326,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		room, exists := c.Namespace()
+		ns, exists := c.Namespace()
 		if !exists {
 			log.Printf("ERR SOCKET CLIENT client with id %q requested a user list for room, but client is not currently in a room. Broadcasting error...", conn.UUID())
 			c.BroadcastErrorTo(fmt.Errorf("error: unable to get user list - you are not currently in a room"))
@@ -377,7 +356,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			userList.Clients = append(userList.Clients, client.SerializableClient{
 				Username: username,
 				Id:       user.UUID(),
-				Room:     room,
+				Room:     ns.Name(),
 				Roles:    roles,
 			})
 		}
@@ -393,15 +372,15 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		roomName, exists := c.Namespace()
+		ns, exists := c.Namespace()
 		if !exists {
 			log.Printf("ERR SOCKET CLIENT client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 			return
 		}
 
-		sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+		sPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(ns)
 		if !exists {
-			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no StreamPlayback could be found associated with that client.", c.UUID())
+			log.Printf("ERR SOCKET CLIENT client with id (%q) requested a streamsync but no Playback could be found associated with that client.", c.UUID())
 			c.BroadcastErrorTo(fmt.Errorf("Warning: could not update stream playback. No room could be detected."))
 			return
 		}
@@ -501,12 +480,12 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 	// TODO: use a handler to broadcast to namespace
 
-	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(namespace)
+	sPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(namespace)
 	if !exists {
-		log.Printf("INF SOCKET CLIENT StreamPlayback did not exist for room with name %q. Creating...", namespace)
-		sPlayback = h.PlaybackHandler.NewStreamPlayback(namespace)
+		log.Printf("INF SOCKET CLIENT Playback did not exist for room with name %q. Creating...", namespace)
+		sPlayback = h.PlaybackHandler.NewPlayback(namespace, h.CommandHandler.Authorizer(), h.clientHandler)
 		sPlayback.OnTick(func(currentTime int) {
-			currPlayback, exists := h.PlaybackHandler.GetStreamPlayback(namespace)
+			currPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(namespace)
 			if !exists {
 				log.Printf("ERR CALLBACK-PLAYBACK SOCKET CLIENT attempted to send streamsync event to client, but stream playback does not exist.")
 				return
@@ -592,11 +571,11 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 	sPlayback.SetLastUpdated(time.Now())
 
-	log.Printf("INF SOCKET CLIENT found StreamPlayback for room with name %q", namespace)
+	log.Printf("INF SOCKET CLIENT found Playback for room with name %q", namespace)
 
 	pStream, exists := sPlayback.GetStream()
 	if exists {
-		log.Printf("INF SOCKET CLIENT found stream info (%s) associated with StreamPlayback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), namespace)
+		log.Printf("INF SOCKET CLIENT found stream info (%s) associated with Playback for room with name %q... Sending \"streamload\" signal to client", pStream.GetStreamURL(), namespace)
 		res := &client.Response{
 			Id: c.UUID(),
 		}
@@ -619,13 +598,13 @@ func (h *Handler) DeregisterClient(conn connection.Connection) error {
 	return nil
 }
 
-func (h *Handler) getPlaybackFromClient(c *client.Client) (*playback.StreamPlayback, error) {
-	roomName, exists := c.Namespace()
+func (h *Handler) getPlaybackFromClient(c *client.Client) (*playback.Playback, error) {
+	ns, exists := c.Namespace()
 	if !exists {
 		return nil, fmt.Errorf("client with id (%q) has no room association. Ignoring streamsync request.", c.UUID())
 	}
 
-	sPlayback, exists := h.PlaybackHandler.GetStreamPlayback(roomName)
+	sPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(ns)
 	if !exists {
 		return nil, fmt.Errorf("warning: could not update stream playback. No room could be detected")
 	}
@@ -637,7 +616,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.server.ServeHTTP(w, r)
 }
 
-func NewHandler(nsHandler connection.NamespaceHandler, connHandler connection.ConnectionHandler, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.StreamPlaybackHandler, streamHandler stream.StreamHandler) *Handler {
+func NewHandler(nsHandler connection.NamespaceHandler, connHandler connection.ConnectionHandler, commandHandler cmd.SocketCommandHandler, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) *Handler {
 	handler := &Handler{
 		clientHandler:   clientHandler,
 		CommandHandler:  commandHandler,
