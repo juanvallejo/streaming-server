@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
-	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
@@ -47,84 +45,140 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 		return "", fmt.Errorf("authorizer not enabled")
 	}
 
-	var subject *client.Client
-	for _, c := range clientHandler.Clients() {
-		ns, hasNs := c.Namespace()
-		if !hasNs || ns != namespace {
+	subjects := []*client.Client{}
+	for _, c := range namespace.Connections() {
+		cl, err := clientHandler.GetClient(c.UUID())
+		if err != nil {
 			continue
 		}
 
-		uName, hasUname := c.GetUsername()
-		if !hasUname {
+		if subjectName == "*" {
+			subjects = append(subjects, cl)
+			continue
+		}
+
+		uName, hasName := cl.GetUsername()
+		if !hasName {
 			continue
 		}
 
 		if uName == subjectName {
-			subject = c
+			subjects = append(subjects, cl)
 			break
 		}
 	}
 
-	if subject == nil {
+	if len(subjects) == 0 {
 		return "", fmt.Errorf("error: unable to find subject %q in your namespace", subjectName)
 	}
-
-	// endpoint the client should hit in order to save roles in cookie
-	targetEndpoint := fmt.Sprintf("/api/auth/cookie?%s=%s", endpoint.CONN_ID_KEY, subject.UUID())
 
 	role, exists := authorizer.Role(roleName)
 	if !exists {
 		return "", fmt.Errorf("error: role %q not found", roleName)
 	}
 
-	// TODO: have an array of subjects and map "*" to all
-	// connections in the room. Iterate through each subject as needed
-
 	switch args[0] {
 	case "set":
-		if err := addRole(authorizer, role, subject); err != nil {
-			return "", err
-		}
-
-		// if no errors adding role, remove all other roles from subject
-		for _, b := range authorizer.Bindings() {
-			if b.Role().Name() == roleName {
+		errs := []string{}
+		bound := []string{}
+		for _, subject := range subjects {
+			if err := addRole(authorizer, role, subject); err != nil {
+				errs = append(errs, err.Error())
 				continue
 			}
 
-			b.RemoveSubject(subject)
+			bound = append(bound, subject.GetUsernameOrId())
+
+			// if no errors adding role, remove all other roles from subject
+			for _, b := range authorizer.Bindings() {
+				if b.Role().Name() == roleName {
+					continue
+				}
+
+				b.RemoveSubject(subject)
+			}
+
+			subject.BroadcastAuthRequestTo("cookie")
 		}
 
-		util.BroadcastHttpRequest(subject, targetEndpoint)
-		return fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName), nil
+		msg := ""
+		for _, e := range errs {
+			msg += fmt.Sprintf("%s\n<br />", e)
+		}
+
+		if subjectName == "*" {
+			if len(bound) > 0 {
+				msg += fmt.Sprintf("bound subjects to role %q: %s", roleName, bound)
+			}
+			return msg, nil
+		}
+
+		msg += fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName)
+		return msg, nil
 	case "add":
-		if err := addRole(authorizer, role, subject); err != nil {
-			return "", err
-		}
+		errs := []string{}
+		bound := []string{}
 
-		util.BroadcastHttpRequest(subject, targetEndpoint)
-		return fmt.Sprintf("subject %q was successfully bound to role %q", subjectName, roleName), nil
-	case "remove":
-		for _, b := range authorizer.Bindings() {
-			if b.Role().Name() != roleName {
+		for _, subject := range subjects {
+			if err := addRole(authorizer, role, subject); err != nil {
+				errs = append(errs, err.Error())
 				continue
 			}
 
-			removed := b.RemoveSubject(subject)
-			if removed {
-				subject.BroadcastSystemMessageTo(fmt.Sprintf("You have been removed from the %q role", role.Name()))
-				subject.BroadcastAll("info_userlistupdated", &client.Response{
-					Id: subject.UUID(),
-				})
-
-				util.BroadcastHttpRequest(subject, targetEndpoint)
-				return fmt.Sprintf("user %q unbound from role %q", subjectName, roleName), nil
-			}
-
-			return "", fmt.Errorf("user %q was not bound to role %q", subjectName, roleName)
+			bound = append(bound, subject.GetUsernameOrId())
+			subject.BroadcastAuthRequestTo("cookie")
 		}
 
-		return "", fmt.Errorf("user %q was not bound to role %q", subjectName, roleName)
+		msg := ""
+		for _, e := range errs {
+			msg += fmt.Sprintf("%s<br />", e)
+		}
+
+		if subjectName == "*" {
+			if len(bound) > 0 {
+				msg += fmt.Sprintf("bound (additive) subjects to role %q: %s", roleName, bound)
+			}
+			return msg, nil
+		}
+
+		return fmt.Sprintf("subject %q was successfully bound (additive) to role %q", subjectName, roleName), nil
+	case "remove":
+		messages := []string{}
+
+		for _, subject := range subjects {
+			for _, b := range authorizer.Bindings() {
+				if b.Role().Name() != roleName {
+					continue
+				}
+
+				removed := b.RemoveSubject(subject)
+				if removed {
+					subject.BroadcastSystemMessageTo(fmt.Sprintf("You have been removed from the %q role", role.Name()))
+					subject.BroadcastAll("info_userlistupdated", &client.Response{
+						Id: subject.UUID(),
+					})
+
+					subject.BroadcastAuthRequestTo("cookie")
+					messages = append(messages, fmt.Sprintf("user %q unbound from role %q", subjectName, roleName))
+					break
+				}
+
+				messages = append(messages, fmt.Sprintf("WARN: user %q was not bound to role %q", subjectName, roleName))
+				break
+			}
+		}
+
+		message := ""
+		for i, m := range messages {
+			br := ""
+			if i+i != len(messages) {
+				br = "<br />"
+			}
+
+			message += m + br
+		}
+
+		return message, nil
 	}
 
 	return h.usage, nil

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/juanvallejo/streaming-server/pkg/api/endpoint/query"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
@@ -12,7 +13,6 @@ import (
 
 const (
 	AUTH_ENDPOINT_PREFIX = "/auth"
-	CONN_ID_KEY          = "id"
 )
 
 // AuthEndpoint implements ApiEndpoint
@@ -34,7 +34,7 @@ func (e *AuthEndpoint) Handle(connHandler connection.ConnectionHandler, segments
 		return
 	}
 
-	connId := r.URL.Query().Get(CONN_ID_KEY)
+	connId := r.URL.Query().Get(query.CONN_ID_KEY)
 	if len(connId) == 0 {
 		HandleEndpointError(fmt.Errorf("missing required parameter: id"), w)
 		return

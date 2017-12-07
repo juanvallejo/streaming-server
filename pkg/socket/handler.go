@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanvallejo/streaming-server/pkg/api/endpoint"
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/playback/queue"
 	playbackutil "github.com/juanvallejo/streaming-server/pkg/playback/util"
@@ -65,10 +64,10 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 				// remove user from authorizer role-bindings
 				authorizer := h.CommandHandler.Authorizer()
 				if authorizer != nil {
+					sPlayback.HandleDisconnection(c.Connection(), authorizer, h.clientHandler)
 					for _, b := range authorizer.Bindings() {
 						b.RemoveSubject(c.Connection())
 					}
-					sPlayback.HandleDisconnection(c.Connection(), authorizer, h.clientHandler)
 				}
 			}
 		}
@@ -204,8 +203,7 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 			return
 		}
 
-		targetEndpoint := fmt.Sprintf("/api/auth/init?%s=%s", endpoint.CONN_ID_KEY, c.UUID())
-		util.BroadcastHttpRequest(c, targetEndpoint)
+		c.BroadcastAuthRequestTo("init")
 	})
 
 	// this event is received when a client is requesting the current queue state
@@ -571,7 +569,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 	sPlayback.SetLastUpdated(time.Now())
 
-	log.Printf("INF SOCKET CLIENT found Playback for room with name %q", namespace)
+	log.Printf("INF SOCKET CLIENT found Playback for room with name %q", namespace.Name())
 
 	pStream, exists := sPlayback.GetStream()
 	if exists {

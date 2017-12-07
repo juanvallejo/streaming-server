@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/juanvallejo/streaming-server/pkg/api/endpoint/query"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
@@ -196,6 +197,19 @@ func (c *Client) BroadcastFrom(evt string, data connection.MessageDataCodec) {
 
 	m := getBroadcastMessage(evt, data)
 	c.connection.BroadcastFrom(ns.Name(), evt, m)
+}
+
+func (c *Client) BroadcastAuthRequestTo(seg string) {
+	targetEndpoint := fmt.Sprintf("/api/auth/%s?%s=%s", seg, query.CONN_ID_KEY, c.UUID())
+
+	c.BroadcastTo("httprequest", &Response{
+		Id:   c.UUID(),
+		From: c.GetUsernameOrId(),
+		Extra: map[string]interface{}{
+			"method":   "GET",
+			"endpoint": targetEndpoint,
+		},
+	})
 }
 
 // BroadcastSystemMessageFrom emits a system-level message from the current

@@ -85,7 +85,7 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 
 		select {
 		case <-stop:
-			log.Printf("INF PLAYBACK ADMIN-PICKER terminated.\n")
+			log.Printf("INF PLAYBACK ADMIN-PICKER terminated for room %q.\n", ns.Name())
 			return
 		default:
 		}
@@ -96,7 +96,7 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 			return
 		}
 
-		// give a buffer of at least SekectionTimerPeriod after the last admin leaves
+		// give a buffer of at least SelectionTimerPeriod after the last admin leaves
 		// before attempting to select the next admin
 		if !p.LastAdminDepartureTime().Equal(time.Time{}) && time.Now().Sub(p.LastAdminDepartureTime()) < SelectionTimePeriod {
 			continue
@@ -108,6 +108,10 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 		}
 
 		adminBindings := []rbac.RoleBinding{}
+
+		// TODO: store this list in memory before sleeping
+		// then re-check if candidate is still available
+		// once the minute is up
 
 		// determine if at least one admin in namespace
 		for _, b := range authorizer.Bindings() {
@@ -154,10 +158,13 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 
 			// broadcast info to client
 			if c, err := clientHandler.GetClient(candidate.UUID()); err == nil {
+				c.BroadcastAuthRequestTo("cookie")
 				c.BroadcastSystemMessageTo("You have been selected as the new admin for this room.")
 				c.BroadcastAll("info_userlistupdated", &client.Response{
 					Id: c.UUID(),
 				})
+			} else {
+				log.Printf("ERR PLAYBACK ADMIN-PICKER unable to broadcast admin-picker events to client - no client found wih id %q\n", candidate.UUID())
 			}
 		}
 	}

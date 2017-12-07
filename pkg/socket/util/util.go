@@ -286,14 +286,3 @@ func SerializeIntoResponse(codec api.ApiCodec, dest interface{}) error {
 
 	return json.Unmarshal(b, dest)
 }
-
-func BroadcastHttpRequest(user *client.Client, endpoint string) {
-	user.BroadcastTo("httprequest", &client.Response{
-		Id:   user.UUID(),
-		From: user.GetUsernameOrId(),
-		Extra: map[string]interface{}{
-			"method":   "GET",
-			"endpoint": endpoint,
-		},
-	})
-}

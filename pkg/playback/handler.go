@@ -36,7 +36,13 @@ type Handler struct {
 }
 
 func (h *Handler) NewPlayback(ns connection.Namespace, authorizer rbac.Authorizer, clientHandler client.SocketClientHandler) *Playback {
-	s := NewPlaybackWithAdminPicker(ns, authorizer, clientHandler, h)
+	var s *Playback
+	if authorizer == nil {
+		s = NewPlayback(ns)
+	} else {
+		s = NewPlaybackWithAdminPicker(ns, authorizer, clientHandler, h)
+	}
+
 	h.streamplaybacks[ns.Name()] = s
 	return s
 }

@@ -425,9 +425,9 @@ func NewPlaybackWithAdminPicker(ns connection.Namespace, authorizer rbac.Authori
 	p.adminPicker = picker
 
 	if err := picker.Init(ns, authorizer, clientHandler, playbackHandler); err != nil {
-		log.Printf("WRN PLAYBACK ADMIN-PICKER unable to initialize admin picker: %v\n", err)
+		log.Printf("WRN PLAYBACK ADMIN-PICKER unable to initialize admin picker for room %q: %v\n", ns.Name(), err)
 	} else {
-		log.Printf("INF PLAYBACK ADMIN-PICKER started\n")
+		log.Printf("INF PLAYBACK ADMIN-PICKER for room %q started\n", ns.Name())
 	}
 
 	return p
