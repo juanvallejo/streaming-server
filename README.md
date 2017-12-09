@@ -1,6 +1,8 @@
 Streaming Server
 ================
 
+![Working demo at FlickTrack.me](https://i.imgur.com/8vE0EBf.png)
+
 ### What?
 
 Multi-client media streaming server. Keeps all clients in sync.  
@@ -92,7 +94,7 @@ while `queueing` simply pushes a stream object into an internal list.
 
 You can queue a video with:
 ```
-/stream queue <URL>
+/queue add <URL>
 ```
 
 Note that `queuing` does not cause clients to also load the video. For the next item in the queue to be `loaded` by all clients,
