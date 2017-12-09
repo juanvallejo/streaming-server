@@ -96,6 +96,16 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 			return
 		}
 
+		// define adminBindings before the rest of the admin-picking process
+		// to ensure we work with the same data throughout
+		adminBindings := []rbac.RoleBinding{}
+
+		for _, b := range authorizer.Bindings() {
+			if b.Role().Name() == rbac.ADMIN_ROLE {
+				adminBindings = append(adminBindings, b)
+			}
+		}
+
 		// give a buffer of at least SelectionTimerPeriod after the last admin leaves
 		// before attempting to select the next admin
 		if !p.LastAdminDepartureTime().Equal(time.Time{}) && time.Now().Sub(p.LastAdminDepartureTime()) < SelectionTimePeriod {
@@ -107,19 +117,7 @@ func pickAdmin(picker AdminPicker, authorizer rbac.Authorizer, ns connection.Nam
 			continue
 		}
 
-		adminBindings := []rbac.RoleBinding{}
-
-		// TODO: store this list in memory before sleeping
-		// then re-check if candidate is still available
-		// once the minute is up
-
 		// determine if at least one admin in namespace
-		for _, b := range authorizer.Bindings() {
-			if b.Role().Name() == rbac.ADMIN_ROLE {
-				adminBindings = append(adminBindings, b)
-			}
-		}
-
 		if len(adminBindings) > 0 {
 			hasAdmin := false
 			for _, admins := range adminBindings {
