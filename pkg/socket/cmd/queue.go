@@ -74,7 +74,12 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", queue.ErrMaxQueueSizeExceeded
 		}
 
-		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.Playback) func([]byte, bool, error) {
+		sendStreamSync := false
+		if sPlayback.State() == playback.PLAYBACK_STATE_ENDED || sPlayback.State() == playback.PLAYBACK_STATE_NOT_STARTED {
+			sendStreamSync = true
+		}
+
+		s, err := sPlayback.GetOrCreateStreamFromUrl(url, user, streamHandler, func(user *client.Client, pback *playback.Playback, shouldSync bool) func([]byte, bool, error) {
 			return func(data []byte, created bool, err error) {
 				// if a new stream was created, sync fetched metadata with client
 				if !created {
@@ -91,8 +96,27 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send user-queue-sync event to client")
 					return
 				}
+
+				if !shouldSync {
+					return
+				}
+
+				log.Printf("INFO SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK calculated queued stream info - sending streamsync\n")
+
+				res := &client.Response{
+					Id:   user.UUID(),
+					From: username,
+				}
+
+				err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
+				if err != nil {
+					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to serialize playback into streamsync response: %v\n", err)
+					return
+				}
+
+				user.BroadcastAll("streamsync", res)
 			}
-		}(user, sPlayback))
+		}(user, sPlayback, sendStreamSync))
 		if err != nil {
 			user.BroadcastErrorTo(err)
 			return "", err
