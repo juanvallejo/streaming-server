@@ -244,6 +244,7 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		streamInfo,
 		subtitles,
 		queueList,
+		queueMigrate,
 		userList,
 		volume,
 		whoami,
@@ -252,7 +253,6 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		clearChat,
 		queueAdd,
 		queueClearMine,
-		queueMigrate,
 		queueOrderMine,
 		userUpdateName,
 	}, viewerRole.Rules()...))

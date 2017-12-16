@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	MaxAggregatableQueueItems = 10
+	MaxAggregatableQueueItems = 20
 )
 
 var (
