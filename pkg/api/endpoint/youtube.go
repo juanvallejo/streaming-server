@@ -13,8 +13,9 @@ import (
 const YOUTUBE_ENDPOINT_PREFIX = "/youtube"
 
 var (
-	youtubeMaxResults       = 20
-	youtubeEndpointTemplate = "https://www.googleapis.com/youtube/v3/search?part=snippet&q=%v&type=video&maxResults=%v&key=%v"
+	youtubeMaxResults           = 20
+	youtubeEndpointTemplate     = "https://www.googleapis.com/youtube/v3/search?part=snippet&q=%v&type=video&maxResults=%v&key=%v"
+	youtubeEndpointListTemplate = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=%v&maxResults=%v&key=%v"
 )
 
 // YoutubeEndpoint implements ApiEndpoint
@@ -44,6 +45,14 @@ func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segme
 
 		handleApiSearch(segments[2], w)
 		return
+	case segments[1] == "list":
+		if len(segments) < 3 {
+			HandleEndpointError(fmt.Errorf("not enough arguments: /list/query"), w)
+			return
+		}
+
+		handleApiList(segments[2], w)
+		return
 	}
 
 	HandleEndpointError(fmt.Errorf("unimplemented parameter"), w)
@@ -51,7 +60,16 @@ func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segme
 
 func handleApiSearch(searchQuery string, w http.ResponseWriter) {
 	reqUrl := fmt.Sprintf(youtubeEndpointTemplate, searchQuery, youtubeMaxResults, config.YT_API_KEY)
-	res, err := http.Get(reqUrl)
+	handleApiRequest(reqUrl, w)
+}
+
+func handleApiList(listId string, w http.ResponseWriter) {
+	reqUrl := fmt.Sprintf(youtubeEndpointListTemplate, listId, youtubeMaxResults, config.YT_API_KEY)
+	handleApiRequest(reqUrl, w)
+}
+
+func handleApiRequest(url string, w http.ResponseWriter) {
+	res, err := http.Get(url)
 	if err != nil {
 		HandleEndpointError(err, w)
 		return
