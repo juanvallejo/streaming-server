@@ -14,6 +14,7 @@ const YOUTUBE_ENDPOINT_PREFIX = "/youtube"
 
 var (
 	youtubeMaxResults           = 20
+	youtubeMaxPlaylistResults   = 15
 	youtubeEndpointTemplate     = "https://www.googleapis.com/youtube/v3/search?part=snippet&q=%v&type=video&maxResults=%v&key=%v"
 	youtubeEndpointListTemplate = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=%v&maxResults=%v&key=%v"
 )
@@ -64,7 +65,7 @@ func handleApiSearch(searchQuery string, w http.ResponseWriter) {
 }
 
 func handleApiList(listId string, w http.ResponseWriter) {
-	reqUrl := fmt.Sprintf(youtubeEndpointListTemplate, listId, youtubeMaxResults, config.YT_API_KEY)
+	reqUrl := fmt.Sprintf(youtubeEndpointListTemplate, listId, youtubeMaxPlaylistResults, config.YT_API_KEY)
 	handleApiRequest(reqUrl, w)
 }
 

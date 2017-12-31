@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"net/http"
 	"time"
 
@@ -129,6 +130,8 @@ type SocketConn struct {
 	httpReq    *http.Request
 	nsHandler  NamespaceHandler
 	ns         string
+
+	mutex sync.Mutex
 }
 
 func (c *SocketConn) On(eventName string, callback SocketEventCallback) {
@@ -202,6 +205,8 @@ func (c *SocketConn) ReadMessage() (int, []byte, error) {
 }
 
 func (c *SocketConn) WriteMessage(messageType int, data []byte) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	return c.Conn.WriteMessage(messageType, data)
 }
 

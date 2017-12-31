@@ -476,11 +476,16 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 		return
 	}
 
+	if len(namespace.Name()) == 0 {
+		log.Printf("INF SOCKET SERVER client namespace registration error: empty namespace name provided for connection with id (%s)\n", conn.UUID())
+		return
+	}
+
 	// TODO: use a handler to broadcast to namespace
 
 	sPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(namespace)
 	if !exists {
-		log.Printf("INF SOCKET CLIENT Playback did not exist for room with name %q. Creating...", namespace)
+		log.Printf("INF SOCKET CLIENT Playback did not exist for room with namespace %v. Creating...", namespace)
 		sPlayback = h.PlaybackHandler.NewPlayback(namespace, h.CommandHandler.Authorizer(), h.clientHandler)
 		sPlayback.OnTick(func(currentTime int) {
 			currPlayback, exists := h.PlaybackHandler.PlaybackByNamespace(namespace)
