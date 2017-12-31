@@ -110,6 +110,15 @@ func (h *RequestHandler) HandleFile(url string, w http.ResponseWriter, r *http.R
 
 func (h *RequestHandler) HandleRoom(url string, w http.ResponseWriter, r *http.Request) {
 	log.Printf("INF HTTP PATH handler for path with url %q matched room name pattern", url)
+
+	// determine if a room name was given after the RoomRootUrl
+	segs := strings.Split(url, path.RoomRootPrefix)
+	key := segs[len(segs) - 1]
+	if len(key) == 0 {
+		path.RedirectHome(url, w, r)
+		return
+	}
+
 	h.HandlePath(path.RoomRootUrl, w, r)
 }
 

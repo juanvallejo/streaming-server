@@ -94,7 +94,7 @@ func (p *Playback) State() PlaybackState {
 // one other connection in its namespace is bound to the admin role. If no other
 // admins are found, the adminHandler is notified.
 func (p *Playback) HandleDisconnection(conn connection.Connection, authorizer rbac.Authorizer, handler client.SocketClientHandler) {
-	if authorizer == nil {
+	if authorizer == nil || conn == nil {
 		return
 	}
 

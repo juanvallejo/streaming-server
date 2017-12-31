@@ -13,6 +13,8 @@ var (
 	RoomRootUrl   = "/room"
 	StreamRootUrl = "/stream"
 
+	RoomRootPrefix = "/v/"
+
 	RoomRootRegex   = "^\\/v\\/.*"
 	StreamRootRegex = "^\\/s\\/.*"
 
@@ -61,4 +63,9 @@ func HandleNotFound(url string, w http.ResponseWriter, r *http.Request) {
 	log.Printf("WRN HTTP PATH handler for path with url %q was not found", url)
 	w.WriteHeader(http.StatusNotFound)
 	io.WriteString(w, "404: page not found.")
+}
+
+func RedirectHome(url string, w http.ResponseWriter, r *http.Request) {
+	log.Printf("WRN HTTP PATH handler for path with url %q redirected", url)
+	http.Redirect(w, r, "/", http.StatusMovedPermanently)
 }
