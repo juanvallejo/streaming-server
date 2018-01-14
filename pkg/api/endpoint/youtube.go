@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,7 +11,13 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 )
 
-const YOUTUBE_ENDPOINT_PREFIX = "/youtube"
+const (
+	YOUTUBE_ENDPOINT_PREFIX = "/youtube"
+
+	YoutubePlaylistItem = "youtube#playlistItem"
+	YoutubeSearchResult = "youtube#searchResult"
+	YoutubeVideoKind    = "youtube#video"
+)
 
 var (
 	youtubeMaxResults           = 20
@@ -22,6 +29,56 @@ var (
 // YoutubeEndpoint implements ApiEndpoint
 type YoutubeEndpoint struct {
 	*ApiEndpointSchema
+}
+
+type YoutubeItem struct {
+	*EndpointResponseItem
+
+	Info    YoutubeItemInfo    `json:"info"`
+	Snippet YoutubeItemSnippet `json:"snippet"`
+}
+
+// holds an "id" struct for youtube videos
+type YoutubeItemInfo struct {
+	Kind    string `json:"kind"`
+	VideoId string `json:"videoId"`
+}
+
+type YoutubeItemThumbnails struct {
+	Default  YoutubeItemThumbnail `json:"default"`
+	Medium   YoutubeItemThumbnail `json:"medium"`
+	High     YoutubeItemThumbnail `json:"high"`
+	Standard YoutubeItemThumbnail `json:"standard"`
+}
+
+type YoutubeItemThumbnail struct {
+	Url    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+type YoutubeItemSnippet struct {
+	PublishedAt string                `json:"publishedAt"`
+	ChannelId   string                `json:"channelId"`
+	Title       string                `json:"title"`
+	Description string                `json:"description"`
+	PlaylistId  string                `json:"playlistId"`
+	Thumbnails  YoutubeItemThumbnails `json:"thumbnails"`
+
+	ResourceId YoutubeItemSnippetResource `json:"resourceId"`
+}
+
+type YoutubeItemSnippetResource struct {
+	Kind    string `json:"kind"`
+	VideoId string `json:"videoId"`
+}
+
+type YoutubeEndpointResponse struct {
+	Items []*YoutubeItem `json:"items"`
+}
+
+func (r *YoutubeEndpointResponse) Encode() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 // Handle returns a "discovery" of all local streams in the server data root.
@@ -61,20 +118,22 @@ func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segme
 
 func handleApiSearch(searchQuery string, w http.ResponseWriter) {
 	reqUrl := fmt.Sprintf(youtubeEndpointTemplate, searchQuery, youtubeMaxResults, config.YT_API_KEY)
-	handleApiRequest(reqUrl, w)
+	handleApiRequest(YoutubeSearchResult, reqUrl, w)
 }
 
 func handleApiList(listId string, w http.ResponseWriter) {
 	reqUrl := fmt.Sprintf(youtubeEndpointListTemplate, listId, youtubeMaxPlaylistResults, config.YT_API_KEY)
-	handleApiRequest(reqUrl, w)
+	handleApiRequest(YoutubePlaylistItem, reqUrl, w)
 }
 
-func handleApiRequest(url string, w http.ResponseWriter) {
+func handleApiRequest(kind string, url string, w http.ResponseWriter) {
 	res, err := http.Get(url)
 	if err != nil {
 		HandleEndpointError(err, w)
 		return
 	}
+
+	defer res.Body.Close()
 
 	data, err := ioutil.ReadAll(res.Body)
 	if err != nil {
@@ -82,7 +141,44 @@ func handleApiRequest(url string, w http.ResponseWriter) {
 		return
 	}
 
-	w.Write(data)
+	// modify standard youube api search result items
+	// in order to conform to the standard api response
+	// for this server - replace certain field types
+	// with appropriate values
+	if kind == YoutubeSearchResult {
+		data = []byte(strings.Replace(string(data), "\"id\":", "\"info\":", -1))
+	}
+
+	resp := &YoutubeEndpointResponse{}
+	err = json.Unmarshal(data, resp)
+	if err != nil {
+		HandleEndpointError(err, w)
+		return
+	}
+
+	// default required spec fields for an api response item
+	for _, respItem := range resp.Items {
+		originalKind := respItem.Kind
+
+		if originalKind == YoutubePlaylistItem {
+			respItem.Id = respItem.Snippet.ResourceId.VideoId
+		} else if originalKind == YoutubeSearchResult {
+			respItem.Kind = respItem.Info.Kind
+			respItem.Id = respItem.Info.VideoId
+		}
+
+		respItem.Thumb = "https://img.youtube.com/vi/" + respItem.Id + "/default.jpg"
+		respItem.Url = "https://www.youtube.com/watch?v=" + respItem.Id
+		respItem.Title = respItem.Snippet.Title
+	}
+
+	respBytes, err := resp.Encode()
+	if err != nil {
+		HandleEndpointError(err, w)
+		return
+	}
+
+	w.Write(respBytes)
 }
 
 func NewYoutubeEndpoint() ApiEndpoint {

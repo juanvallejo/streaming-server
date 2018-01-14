@@ -21,6 +21,23 @@ type ApiEndpoint interface {
 	Handle(connection.ConnectionHandler, []string, http.ResponseWriter, *http.Request)
 }
 
+type EndpointResponseCodec interface {
+	Decode([]byte) error
+}
+
+type EndpointResponseItem struct {
+	Kind  string `json:"kind"`
+	Id    string `json:"id"`
+	UId   string `json:"_id"`
+	Thumb string `json:"thumb"`
+	Url   string `json:"url"`
+	Title string `json:"title"`
+}
+
+func (i *EndpointResponseItem) Decode(b []byte) error {
+	return json.Unmarshal(b, i)
+}
+
 type ApiEndpointSchema struct {
 	path string
 }

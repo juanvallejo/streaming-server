@@ -337,6 +337,8 @@ func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
 			return
 		}
 
+		defer res.Body.Close()
+
 		data, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			callback(s, nil, err)
@@ -441,6 +443,80 @@ func FetchLocalVideoMetadata(s *LocalVideoStream) ([]byte, error) {
 // data and state
 type TwitchStream struct {
 	*StreamSchema
+
+	apiKey string
+}
+
+// TwitchResponseItem contains twitch api response data
+// for a unique twitch video
+type TwitchResponseItem struct {
+	Title      string                        `json:"title"`
+	Length     int                           `json:"length"`
+	Thumbnails []TwitchResponseItemThumbnail `json:"thumbnails"`
+}
+
+type TwitchResponseItemThumbnail struct {
+	Url string `json:"url"`
+}
+
+type TwitchVideoItem map[string]interface{}
+
+func (s *TwitchStream) FetchMetadata(callback StreamMetadataCallback) {
+	videoId, err := twitchVideoIdFromUrl(s.Url)
+	if err != nil {
+		callback(s, []byte{}, err)
+		return
+	}
+
+	go func(videoId, apiKey string, callback StreamMetadataCallback) {
+		client := &http.Client{}
+
+		req, err := http.NewRequest("GET", "https://api.twitch.tv/kraken/videos/"+videoId, nil)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		req.Header.Set("Client-ID", apiKey)
+
+		res, err := client.Do(req)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		defer res.Body.Close()
+
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		twitchResponseItem := &TwitchResponseItem{}
+		err = json.Unmarshal(data, twitchResponseItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		// craft callback metadata response with default fields
+		twitchVideoItem := TwitchVideoItem{}
+		twitchVideoItem["name"] = twitchResponseItem.Title
+		twitchVideoItem["duration"] = float64(twitchResponseItem.Length)
+
+		if len(twitchResponseItem.Thumbnails) > 0 {
+			twitchVideoItem["thumbnail"] = twitchResponseItem.Thumbnails[0].Url
+		}
+
+		jsonData, err := json.Marshal(twitchVideoItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		callback(s, jsonData, nil)
+	}(videoId, s.apiKey, callback)
 }
 
 func NewYouTubeStream(url string) Stream {
@@ -470,11 +546,13 @@ func NewYouTubeStream(url string) Stream {
 
 func NewTwitchStream(url string) Stream {
 	return &TwitchStream{
-		&StreamSchema{
+		StreamSchema: &StreamSchema{
 			Url:  url,
 			Kind: STREAM_TYPE_TWITCH,
 			Meta: NewStreamMeta(),
 		},
+
+		apiKey: apiconfig.TWITCH_API_KEY,
 	}
 }
 
@@ -525,4 +603,13 @@ func ytVideoIdFromUrl(url string) (string, error) {
 	}
 
 	return lastSeg, nil
+}
+
+func twitchVideoIdFromUrl(url string) (string, error) {
+	segs := strings.Split(url, "/videos/")
+	if len(segs) != 2 {
+		return "", fmt.Errorf("invalid url")
+	}
+
+	return segs[1], nil
 }
