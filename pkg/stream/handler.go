@@ -3,6 +3,7 @@ package stream
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -83,45 +84,64 @@ func (h *Handler) initGarbageCollector() {
 
 // NewStream receives a url and resolves it
 // into a specific supported stream type
-func (h *Handler) NewStream(url string) (Stream, error) {
-	if _, exists := h.streams[url]; exists {
-		return nil, fmt.Errorf("error: a stream with resource location %q has already been registered", url)
+func (h *Handler) NewStream(streamUrl string) (Stream, error) {
+	if _, exists := h.streams[streamUrl]; exists {
+		return nil, fmt.Errorf("error: a stream with resource location %q has already been registered", streamUrl)
 	}
 
-	if strings.HasPrefix(url, "http") {
-		if strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be") {
-			s := NewYouTubeStream(url)
-			h.streams[url] = s
-			return s, nil
-		}
-		if strings.Contains(url, "twitch.tv") {
-			s := NewTwitchStream(url)
-			h.streams[url] = s
-			return s, nil
-		}
-		return nil, fmt.Errorf("error: stream resource location interpreted as url, but stream source is not supported for: %q", url)
+	u, err := url.Parse(streamUrl)
+	if err != nil {
+		return nil, err
 	}
 
-	fpath := paths.StreamDataFilePathFromFilename(url)
+	if u.Scheme == "http" || u.Scheme == "https" {
+		host := u.Host
+		segs := strings.Split(u.Host, "www.")
+		if len(segs) > 1 {
+			host = segs[1]
+		}
+
+		switch host {
+		case "youtube.com", "youtu.be", "m.youtube.com":
+			s := NewYouTubeStream(streamUrl)
+			h.streams[streamUrl] = s
+			return s, nil
+		case "twitch.tv":
+			params := u.Query()
+			if len(params.Get("clip")) > 0 {
+				s := NewTwitchClipStream(streamUrl)
+				h.streams[streamUrl] = s
+				return s, nil
+			}
+
+			s := NewTwitchStream(streamUrl)
+			h.streams[streamUrl] = s
+			return s, nil
+		}
+
+		return nil, fmt.Errorf("error: stream resource location interpreted as url, but stream source is not supported for: %q", streamUrl)
+	}
+
+	fpath := paths.StreamDataFilePathFromFilename(streamUrl)
 
 	// determine if a mimetype can be determined from the requested filepath,
 	// and that the mimetype (if any) is supported.
-	mimeType, err := paths.FileMimeFromFilePath(url)
+	mimeType, err := paths.FileMimeFromFilePath(streamUrl)
 	if err != nil || !strings.HasPrefix(mimeType, "video") {
 		log.Printf("ERR SOCKET CLIENT error parsing file mimetype (%q): %v", mimeType, err)
-		return nil, fmt.Errorf("unable to load %q. Unsupported streaming file.", url)
+		return nil, fmt.Errorf("unable to load %q. Unsupported streaming file.", streamUrl)
 	}
 
 	_, err = os.Stat(fpath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("unable to load %q: video file does not exist.", url)
+			return nil, fmt.Errorf("unable to load %q: video file does not exist.", streamUrl)
 		}
-		return nil, fmt.Errorf("unable to load %q: %v", url, err)
+		return nil, fmt.Errorf("unable to load %q: %v", streamUrl, err)
 	}
 
-	s := NewLocalVideoStream(url)
-	h.streams[url] = s
+	s := NewLocalVideoStream(streamUrl)
+	h.streams[streamUrl] = s
 	return s, nil
 }
 

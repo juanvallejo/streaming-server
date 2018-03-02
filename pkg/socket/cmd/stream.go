@@ -126,9 +126,14 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			return "", err
 		}
 
+		streamIdentifier := nextStream.GetName()
+		if len(streamIdentifier) == 0 {
+			streamIdentifier = nextStream.GetStreamURL()
+		}
+
 		user.BroadcastAll("streamload", res)
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, nextStream.GetStreamURL()))
-		return fmt.Sprintf("attempting to load the next item in the queue: %q", nextStream.GetStreamURL()), nil
+		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has attempted to load the next item in the queue: %q", username, streamIdentifier))
+		return fmt.Sprintf("attempting to load the next item in the queue: %q", streamIdentifier), nil
 	case "load":
 		fallthrough
 	case "set":
@@ -221,10 +226,14 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 			}
 		}
 
+		message := "setting the stream playback to"
+
 		if len(modifier) > 0 {
 			if modifier == "+" {
+				message = "advancing the stream playback by"
 				sPlayback.SetTime(sPlayback.GetTime() + newTime)
 			} else {
+				message = "rewinding the stream playback by"
 				sPlayback.SetTime(sPlayback.GetTime() - newTime)
 			}
 		} else {
@@ -242,8 +251,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 		}
 
 		user.BroadcastAll("streamsync", res)
-
-		return fmt.Sprintf("setting the stream playback to %vs for all clients.", newTime), nil
+		return fmt.Sprintf("%s %vs for all clients.", message, newTime), nil
 	}
 
 	return h.usage, nil

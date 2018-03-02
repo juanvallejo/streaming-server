@@ -30,7 +30,8 @@ type Handler struct {
 }
 
 const (
-	ROOM_DEFAULT_STREAMSYNC_RATE = 15 // seconds to wait before emitting streamsync to clients
+	ROOM_DEFAULT_STREAMSYNC_RATE         = 10 // seconds to wait before emitting streamsync to clients
+	ROOM_DEFAULT_STREAMSYNC_LOGGING_RATE = 50
 )
 
 func (h *Handler) HandleClientConnection(conn connection.Connection) {
@@ -494,9 +495,20 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 				return
 			}
 
+			shouldSync := false
+			currStream, streamExists := currPlayback.GetStream()
+			if streamExists {
+				// handle stream offsets
+				offset := currStream.GetOffset()
+				if offset > 0 && float64(currPlayback.GetTime()) < offset {
+					log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT detected stream playback offset. Adjusting playback...")
+					shouldSync = true
+					currPlayback.SetTime(int(offset))
+				}
+			}
+
 			if currentTime%2 == 0 {
-				currStream, exists := currPlayback.GetStream()
-				if exists {
+				if streamExists {
 					// if stream exists and playback timer >= playback stream duration, stop stream
 					// or queue the next item in the playback queue (if queue not empty)
 					if currStream.GetDuration() > 0 && float64(currPlayback.GetTime()) >= currStream.GetDuration() {
@@ -550,11 +562,14 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 			// if stream timer has not reached its duration, wait until next ROOM_DEFAULT_STREAMSYNC_RATE tick
 			// before updating client with playback information
-			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
+			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 && !shouldSync {
 				return
 			}
 
-			log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
+			// log in 50 second intervals
+			if currentTime%ROOM_DEFAULT_STREAMSYNC_LOGGING_RATE == 0 {
+				log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT streamsync event sent after %v seconds", currentTime)
+			}
 
 			res := &client.Response{
 				Id: c.UUID(),

@@ -86,16 +86,23 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return
 				}
 
-				err = sendQueueSyncEvent(user, sPlayback)
+				err = sendQueueSyncEvent(user, pback)
 				if err != nil {
 					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send queue-sync event to client")
 					return
 				}
-				err = sendUserQueueSyncEvent(user, sPlayback)
+				err = sendUserQueueSyncEvent(user, pback)
 				if err != nil {
 					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send user-queue-sync event to client")
 					return
 				}
+
+				streamIdentifier := url
+				s, ok := streamHandler.GetStream(url)
+				if ok && len(s.GetName()) > 0 {
+					streamIdentifier = s.GetName()
+				}
+				user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, streamIdentifier))
 
 				if !shouldSync {
 					return
@@ -135,8 +142,6 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		if err != nil {
 			return "", err
 		}
-
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, url))
 
 		// TODO: turn this code-block into a helper (currently used here, socket/handler.go, and cmd/stream.go)
 		// if room playback state is PLAYBACK_STATE_ENDED, auto-play the next queued item (if found)

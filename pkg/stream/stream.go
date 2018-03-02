@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -201,6 +202,8 @@ type Stream interface {
 	GetKind() string
 	// GetDuration returns the stream's saved duration
 	GetDuration() float64
+	// GetOffset returns the stream's playback offset (if any)
+	GetOffset() float64
 	// Codec returns a serializable representation of the
 	// current stream
 	Codec() api.ApiCodec
@@ -225,6 +228,8 @@ type StreamSchema struct {
 	Url string `json:"url"`
 	// Duration is the total time for the current stream
 	Duration float64 `json:"duration"`
+	// Offset is the playback starting point in seconds
+	Offset float64 `json:"offset"`
 	// Thumbnail is a url pointing to a still of the stream
 	Thumbnail string `json:"thumb"`
 	// Metadata stores Stream abject meta information
@@ -249,6 +254,10 @@ func (s *StreamSchema) GetKind() string {
 
 func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
+}
+
+func (s *StreamSchema) GetOffset() float64 {
+	return s.Offset
 }
 
 func (s *StreamSchema) Metadata() StreamMeta {
@@ -506,7 +515,7 @@ func (s *TwitchStream) FetchMetadata(callback StreamMetadataCallback) {
 		twitchVideoItem["duration"] = float64(twitchResponseItem.Length)
 
 		if len(twitchResponseItem.Thumbnails) > 0 {
-			twitchVideoItem["thumbnail"] = twitchResponseItem.Thumbnails[0].Url
+			twitchVideoItem["thumb"] = twitchResponseItem.Thumbnails[0].Url
 		}
 
 		jsonData, err := json.Marshal(twitchVideoItem)
@@ -519,22 +528,22 @@ func (s *TwitchStream) FetchMetadata(callback StreamMetadataCallback) {
 	}(videoId, s.apiKey, callback)
 }
 
-func NewYouTubeStream(url string) Stream {
-	// normalize url
-	segs := strings.Split(url, "&")
+func NewYouTubeStream(videoUrl string) Stream {
+	// normalize videoUrl
+	segs := strings.Split(videoUrl, "&")
 	if len(segs) > 1 {
-		url = segs[0]
+		videoUrl = segs[0]
 	}
 
 	thumb := ""
-	id, err := ytVideoIdFromUrl(url)
+	id, err := ytVideoIdFromUrl(videoUrl)
 	if err == nil {
 		thumb = "https://img.youtube.com/vi/" + id + "/default.jpg"
 	}
 
 	return &YouTubeStream{
 		StreamSchema: &StreamSchema{
-			Url:       url,
+			Url:       videoUrl,
 			Thumbnail: thumb,
 			Kind:      STREAM_TYPE_YOUTUBE,
 			Meta:      NewStreamMeta(),
@@ -544,10 +553,111 @@ func NewYouTubeStream(url string) Stream {
 	}
 }
 
-func NewTwitchStream(url string) Stream {
+func NewTwitchStream(videoUrl string) Stream {
 	return &TwitchStream{
 		StreamSchema: &StreamSchema{
-			Url:  url,
+			Url:  videoUrl,
+			Kind: STREAM_TYPE_TWITCH,
+			Meta: NewStreamMeta(),
+		},
+
+		apiKey: apiconfig.TWITCH_API_KEY,
+	}
+}
+
+// TwitchClipStream implements Stream
+// and represents a clip.twitch.tv video stream
+type TwitchClipStream struct {
+	*StreamSchema
+
+	// Offset is the starting point for playback
+	Offset float64 `json:"offset"`
+
+	apiKey string
+}
+
+// TwitchClipResponseItem contains twitch api response data
+// for a unique twitch video
+type TwitchClipResponseItem struct {
+	Title      string                          `json:"title"`
+	Length     float64                         `json:"duration"`
+	Thumbnails TwitchClipResponseItemThumbnail `json:"thumbnails"`
+
+	Vod TwitchClipResponseVod `json:"vod"`
+}
+
+type TwitchClipResponseItemThumbnail struct {
+	Url string `json:"medium"`
+}
+
+type TwitchClipResponseVod struct {
+	Url    string  `json:"url"`
+	Offset float64 `json:"offset"`
+}
+
+type TwitchClipItem map[string]interface{}
+
+func (s *TwitchClipStream) FetchMetadata(callback StreamMetadataCallback) {
+	videoId, err := twitchClipIdFromUrl(s.Url)
+	if err != nil {
+		callback(s, []byte{}, err)
+		return
+	}
+
+	go func(videoId, apiKey string, callback StreamMetadataCallback) {
+		client := &http.Client{}
+
+		req, err := http.NewRequest("GET", "https://api.twitch.tv/kraken/clips/"+videoId, nil)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		req.Header.Set("Client-ID", apiKey)
+		req.Header.Set("Accept", "application/vnd.twitchtv.v5+json")
+
+		res, err := client.Do(req)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		defer res.Body.Close()
+
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		responseItem := &TwitchClipResponseItem{}
+		err = json.Unmarshal(data, responseItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		// craft callback metadata response with default fields
+		twitchClipItem := TwitchClipItem{}
+		twitchClipItem["name"] = responseItem.Title
+		twitchClipItem["duration"] = responseItem.Vod.Offset + float64(responseItem.Length)
+		twitchClipItem["thumb"] = responseItem.Thumbnails.Url
+		twitchClipItem["offset"] = float64(responseItem.Vod.Offset)
+
+		jsonData, err := json.Marshal(twitchClipItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		callback(s, jsonData, nil)
+	}(videoId, s.apiKey, callback)
+}
+
+func NewTwitchClipStream(videoUrl string) Stream {
+	return &TwitchClipStream{
+		StreamSchema: &StreamSchema{
+			Url:  videoUrl,
 			Kind: STREAM_TYPE_TWITCH,
 			Meta: NewStreamMeta(),
 		},
@@ -584,8 +694,8 @@ func NewLocalVideoStream(filepath string) Stream {
 	}
 }
 
-func ytVideoIdFromUrl(url string) (string, error) {
-	segs := strings.Split(url, "/")
+func ytVideoIdFromUrl(videoUrl string) (string, error) {
+	segs := strings.Split(videoUrl, "/")
 	if len(segs) < 2 {
 		return "", fmt.Errorf("invalid url")
 	}
@@ -605,11 +715,25 @@ func ytVideoIdFromUrl(url string) (string, error) {
 	return lastSeg, nil
 }
 
-func twitchVideoIdFromUrl(url string) (string, error) {
-	segs := strings.Split(url, "/videos/")
+func twitchVideoIdFromUrl(videoUrl string) (string, error) {
+	segs := strings.Split(videoUrl, "/videos/")
 	if len(segs) != 2 {
 		return "", fmt.Errorf("invalid url")
 	}
 
 	return segs[1], nil
+}
+
+func twitchClipIdFromUrl(clipUrl string) (string, error) {
+	u, err := url.Parse(clipUrl)
+	if err != nil {
+		return "", err
+	}
+
+	slug := u.Query().Get("clip")
+	if len(slug) == 0 {
+		return "", fmt.Errorf("invalid clip url - missing clip parameter")
+	}
+
+	return slug, nil
 }

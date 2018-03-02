@@ -67,7 +67,7 @@ func HandleEndpointSuccess(msg string, w http.ResponseWriter) {
 }
 
 func HandleEndpointError(err error, w http.ResponseWriter) {
-	message := fmt.Sprintf("error: %v", err)
+	message := fmt.Sprintf("%v", err)
 
 	res := &ApiResponse{
 		Error:    message,
