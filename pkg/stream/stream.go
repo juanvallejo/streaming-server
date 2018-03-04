@@ -21,9 +21,10 @@ import (
 )
 
 const (
-	STREAM_TYPE_YOUTUBE = "youtube"
-	STREAM_TYPE_LOCAL   = "movie"
-	STREAM_TYPE_TWITCH  = "twitch"
+	STREAM_TYPE_YOUTUBE     = "youtube"
+	STREAM_TYPE_LOCAL       = "movie"
+	STREAM_TYPE_TWITCH      = "twitch"
+	STREAM_TYPE_TWITCH_CLIP = "twitch#clip"
 
 	DEFAULT_LIB_AV_BIN = "ffprobe" // used to extract local media file metadata
 )
@@ -202,8 +203,6 @@ type Stream interface {
 	GetKind() string
 	// GetDuration returns the stream's saved duration
 	GetDuration() float64
-	// GetOffset returns the stream's playback offset (if any)
-	GetOffset() float64
 	// Codec returns a serializable representation of the
 	// current stream
 	Codec() api.ApiCodec
@@ -228,8 +227,6 @@ type StreamSchema struct {
 	Url string `json:"url"`
 	// Duration is the total time for the current stream
 	Duration float64 `json:"duration"`
-	// Offset is the playback starting point in seconds
-	Offset float64 `json:"offset"`
 	// Thumbnail is a url pointing to a still of the stream
 	Thumbnail string `json:"thumb"`
 	// Metadata stores Stream abject meta information
@@ -254,10 +251,6 @@ func (s *StreamSchema) GetKind() string {
 
 func (s *StreamSchema) GetDuration() float64 {
 	return s.Duration
-}
-
-func (s *StreamSchema) GetOffset() float64 {
-	return s.Offset
 }
 
 func (s *StreamSchema) Metadata() StreamMeta {
@@ -570,9 +563,6 @@ func NewTwitchStream(videoUrl string) Stream {
 type TwitchClipStream struct {
 	*StreamSchema
 
-	// Offset is the starting point for playback
-	Offset float64 `json:"offset"`
-
 	apiKey string
 }
 
@@ -591,8 +581,7 @@ type TwitchClipResponseItemThumbnail struct {
 }
 
 type TwitchClipResponseVod struct {
-	Url    string  `json:"url"`
-	Offset float64 `json:"offset"`
+	Url string `json:"url"`
 }
 
 type TwitchClipItem map[string]interface{}
@@ -640,9 +629,8 @@ func (s *TwitchClipStream) FetchMetadata(callback StreamMetadataCallback) {
 		// craft callback metadata response with default fields
 		twitchClipItem := TwitchClipItem{}
 		twitchClipItem["name"] = responseItem.Title
-		twitchClipItem["duration"] = responseItem.Vod.Offset + float64(responseItem.Length)
+		twitchClipItem["duration"] = float64(responseItem.Length)
 		twitchClipItem["thumb"] = responseItem.Thumbnails.Url
-		twitchClipItem["offset"] = float64(responseItem.Vod.Offset)
 
 		jsonData, err := json.Marshal(twitchClipItem)
 		if err != nil {
@@ -658,7 +646,7 @@ func NewTwitchClipStream(videoUrl string) Stream {
 	return &TwitchClipStream{
 		StreamSchema: &StreamSchema{
 			Url:  videoUrl,
-			Kind: STREAM_TYPE_TWITCH,
+			Kind: STREAM_TYPE_TWITCH_CLIP,
 			Meta: NewStreamMeta(),
 		},
 

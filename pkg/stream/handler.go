@@ -107,19 +107,21 @@ func (h *Handler) NewStream(streamUrl string) (Stream, error) {
 			h.streams[streamUrl] = s
 			return s, nil
 		case "twitch.tv":
+			s := NewTwitchStream(streamUrl)
+			h.streams[streamUrl] = s
+			return s, nil
+		case "clips-media-assets.twitch.tv":
 			params := u.Query()
-			if len(params.Get("clip")) > 0 {
-				s := NewTwitchClipStream(streamUrl)
-				h.streams[streamUrl] = s
-				return s, nil
+			if len(params.Get("clip")) == 0 {
+				return nil, fmt.Errorf("invalid Twitch clip url. Missing ?clip= parameter")
 			}
 
-			s := NewTwitchStream(streamUrl)
+			s := NewTwitchClipStream(streamUrl)
 			h.streams[streamUrl] = s
 			return s, nil
 		}
 
-		return nil, fmt.Errorf("error: stream resource location interpreted as url, but stream source is not supported for: %q", streamUrl)
+		return nil, fmt.Errorf("stream resource location interpreted as url, but stream source is not supported for: %q", streamUrl)
 	}
 
 	fpath := paths.StreamDataFilePathFromFilename(streamUrl)

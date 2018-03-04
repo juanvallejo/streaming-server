@@ -86,6 +86,14 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					return
 				}
 
+				streamIdentifier := url
+				s, ok := streamHandler.GetStream(url)
+				if ok && len(s.GetName()) > 0 {
+					streamIdentifier = s.GetName()
+				}
+				user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, streamIdentifier))
+				user.BroadcastSystemMessageTo(fmt.Sprintf("successfully queued %q", streamIdentifier))
+
 				err = sendQueueSyncEvent(user, pback)
 				if err != nil {
 					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send queue-sync event to client")
@@ -96,13 +104,6 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 					log.Printf("ERR SOCKET CLIENT PLAYBACK-FETCHMETADATA-CALLBACK unable to send user-queue-sync event to client")
 					return
 				}
-
-				streamIdentifier := url
-				s, ok := streamHandler.GetStream(url)
-				if ok && len(s.GetName()) > 0 {
-					streamIdentifier = s.GetName()
-				}
-				user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has added %q to the queue", username, streamIdentifier))
 
 				if !shouldSync {
 					return
@@ -143,6 +144,13 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			return "", err
 		}
 
+		streamQueueMsg := "attempting to queue stream..."
+
+		_, ok := streamHandler.GetStream(url)
+		if ok && len(s.GetName()) > 0 {
+			streamQueueMsg = fmt.Sprintf("successfully queued %q", s.GetName())
+		}
+
 		// TODO: turn this code-block into a helper (currently used here, socket/handler.go, and cmd/stream.go)
 		// if room playback state is PLAYBACK_STATE_ENDED, auto-play the next queued item (if found)
 		if sPlayback.State() == playback.PLAYBACK_STATE_ENDED || sPlayback.State() == playback.PLAYBACK_STATE_NOT_STARTED {
@@ -151,7 +159,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 			if err == nil {
 				nextStream, ok := nextQueueItem.(stream.Stream)
 				if !ok {
-					return fmt.Sprintf("successfully queued %q - unable to auto-play: queued item does not implement stream.Stream.", url), nil
+					return fmt.Sprintf("%s - The stream will not auto-play because it does appear to be a stream.Stream (programmer error)", streamQueueMsg), nil
 				}
 
 				sPlayback.SetStream(nextStream)
@@ -164,7 +172,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 				err = sockutil.SerializeIntoResponse(sPlayback.GetStatus(), &res.Extra)
 				if err != nil {
-					return fmt.Sprintf("successfully queued %q - unable to auto-play: an error ocurred serializing status response: %v", url, err), nil
+					return fmt.Sprintf("%s - The stream will not auto-play due to a serialization error: %v", streamQueueMsg, err), nil
 				}
 
 				user.BroadcastAll("streamload", res)
@@ -172,15 +180,15 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 				// play the newly loaded stream
 				err := sPlayback.Play()
 				if err != nil {
-					return fmt.Sprintf("auto-loaded the requested queue item (%q) - unable to auto-play: %v", url, err), nil
+					return fmt.Sprintf("%s - The stream will not auto-play due to an error: %v", streamQueueMsg, err), nil
 				}
 
 				user.BroadcastAll("streamsync", res)
-				return fmt.Sprintf("successfully queued %q. Auto-playing...", url), nil
+				return fmt.Sprintf("%s (auto-playing...)", streamQueueMsg), nil
 			}
 		}
 
-		return fmt.Sprintf("successfully queued %q", url), nil
+		return streamQueueMsg, nil
 	case "list":
 		if len(args) < 2 {
 			return "", fmt.Errorf("%v", h.usage)

@@ -495,19 +495,8 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 				return
 			}
 
-			shouldSync := false
-			currStream, streamExists := currPlayback.GetStream()
-			if streamExists {
-				// handle stream offsets
-				offset := currStream.GetOffset()
-				if offset > 0 && float64(currPlayback.GetTime()) < offset {
-					log.Printf("INF CALLBACK-PLAYBACK SOCKET CLIENT detected stream playback offset. Adjusting playback...")
-					shouldSync = true
-					currPlayback.SetTime(int(offset))
-				}
-			}
-
 			if currentTime%2 == 0 {
+				currStream, streamExists := currPlayback.GetStream()
 				if streamExists {
 					// if stream exists and playback timer >= playback stream duration, stop stream
 					// or queue the next item in the playback queue (if queue not empty)
@@ -562,7 +551,7 @@ func (h *Handler) RegisterClient(conn connection.Connection) {
 
 			// if stream timer has not reached its duration, wait until next ROOM_DEFAULT_STREAMSYNC_RATE tick
 			// before updating client with playback information
-			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 && !shouldSync {
+			if currentTime%ROOM_DEFAULT_STREAMSYNC_RATE != 0 {
 				return
 			}
 

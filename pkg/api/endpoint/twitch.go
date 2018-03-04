@@ -22,6 +22,10 @@ var (
 	twitchMaxResults             = 20
 	twitchStreamEndpointTemplate = "https://api.twitch.tv/kraken/videos/%s"
 	twitchClipEndpointTemplate   = "https://api.twitch.tv/kraken/clips/%s"
+
+	// source address of clip
+	twitchClipUrlTemplate    = "https://clips-media-assets.twitch.tv/%v.mp4"
+	twitchClipVodUrlTemplate = "https://clips-media-assets.twitch.tv/AT-%v-854x480.mp4"
 )
 
 // TwitchEndpoint implements ApiEndpoint
@@ -74,9 +78,8 @@ func (t *TwitchClipItem) Decode(b []byte) error {
 }
 
 type TwitchClipItemVod struct {
-	Id     string  `json:"id"`
-	Offset float64 `json:"offset"`
-	Url    string  `json:"url"`
+	Id  string `json:"id"`
+	Url string `json:"url"`
 }
 
 type TwitchClipItemThumbnail struct {
@@ -182,15 +185,14 @@ func encodeTwitchClipItem(b []byte) ([]byte, error) {
 	item.Id = item.Vod.Id
 	item.Length = int(item.Duration)
 
-	if len(item.Vod.Url) == 0 {
-		return nil, fmt.Errorf("original VOD for specified clip is no longer available")
+	// sanitize vod url
+	item.Url = twitchClipUrlFromAssetUrl(item.Thumb)
+	if len(item.Url) == 0 {
+		return nil, fmt.Errorf("this clip is not compatible and cannot be played")
 	}
 
-	// sanitize vod url
-	item.Url = strings.Split(item.Vod.Url, "?")[0]
-
 	// in the case of a video clip, we return an item
-	// with the original, full video url, and the clip's
+	// with the original, full source url, and the clip's
 	// slug as a query parameter.
 	item.Url = item.Url + "?clip=" + item.VideoId
 
@@ -199,6 +201,43 @@ func encodeTwitchClipItem(b []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(resp)
+}
+
+// twitchClipUrlFromAssetUrl receives an asset url and returns a
+// sanitized portion of it - compatible with a twitchClipUrlTemplate.
+// This should not need to exist, but is necessary due to twitch api limitations.
+// Returns an empty string if a sanitized, compatible portion cannot be extracted.
+func twitchClipUrlFromAssetUrl(assetLoc string) string {
+	segs := strings.Split(assetLoc, "/")
+	lastSeg := segs[len(segs)-1]
+	if len(lastSeg) == 0 {
+		return ""
+	}
+
+	// if asset location begins with "vod-", we can
+	// expect the entire url to be structured differently.
+	// handle that template.
+	vodPieces := strings.Split(lastSeg, "vod-")
+	if len(vodPieces) > 1 {
+		clipId := strings.Split(lastSeg, "-preview-")[0]
+		return fmt.Sprintf(twitchClipUrlTemplate, clipId)
+	}
+
+	// due to inconsistencies with the twitch api, if a url
+	// does not begin with "vod-", but does contain an "-offset-"
+	// we need to default to a slightly different template.
+	offsetPieces := strings.Split(lastSeg, "-offset-")
+	if len(offsetPieces) > 1 {
+		clipId := strings.Split(lastSeg, "-preview-")[0]
+		return fmt.Sprintf(twitchClipVodUrlTemplate, clipId)
+	}
+
+	remainingPieces := strings.Split(lastSeg, "-")
+	if len(remainingPieces) > 1 {
+		lastSeg = remainingPieces[0]
+	}
+
+	return fmt.Sprintf(twitchClipUrlTemplate, lastSeg)
 }
 
 func handleTwitchApiRequest(url string, extraHeaders map[string]string, codec TwitchItemCodec, w http.ResponseWriter) {
