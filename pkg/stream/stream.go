@@ -1,18 +1,16 @@
 package stream
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"regexp"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/imkira/go-libav/avformat"
 
 	apiconfig "github.com/juanvallejo/streaming-server/pkg/api/config"
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
@@ -25,8 +23,6 @@ const (
 	STREAM_TYPE_LOCAL       = "movie"
 	STREAM_TYPE_TWITCH      = "twitch"
 	STREAM_TYPE_TWITCH_CLIP = "twitch#clip"
-
-	DEFAULT_LIB_AV_BIN = "ffprobe" // used to extract local media file metadata
 )
 
 type StreamMetadataCallback func(Stream, []byte, error)
@@ -386,17 +382,9 @@ func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
 // a local filepath.
 type LocalVideoStream struct {
 	*StreamSchema
-
-	libAvRootPath string
-	libAvFile     string
 }
 
 func (s *LocalVideoStream) FetchMetadata(callback StreamMetadataCallback) {
-	if len(s.libAvRootPath) == 0 {
-		callback(s, []byte{}, fmt.Errorf("unsupported os. Skipping local file duration calculation."))
-		return
-	}
-
 	go func(s *LocalVideoStream, callback StreamMetadataCallback) {
 		data, err := FetchLocalVideoMetadata(s)
 		if err != nil {
@@ -412,22 +400,24 @@ func (s *LocalVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 func FetchLocalVideoMetadata(s *LocalVideoStream) ([]byte, error) {
 	fpath := pathutil.StreamDataFilePathFromUrl(s.Url)
 
-	args := []string{"-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", fpath}
-	command := exec.Command(s.libAvRootPath+s.libAvFile, args...)
-
-	var buff bytes.Buffer
-	command.Stdout = &buff
-
-	err := command.Run()
+	// open format (container) context
+	decFmt, err := avformat.NewContextForInput()
 	if err != nil {
-		return []byte{}, err
+		return nil, fmt.Errorf("error decoding stream information: %v", err)
 	}
 
-	duration, err := strconv.ParseFloat(strings.Trim(buff.String(), "\n"), 32)
-	if err != nil {
-		return []byte{}, err
+	// open file for decoding
+	if err := decFmt.OpenInput(fpath, nil, nil); err != nil {
+		return nil, fmt.Errorf("error decoding stream information: %v", err)
 	}
 
+	// initialize context with stream information
+	if err := decFmt.FindStreamInfo(nil); err != nil {
+		return nil, fmt.Errorf("error decoding stream information: %v", err)
+	}
+
+	// we receive duration in microseconds, convert to seconds
+	duration := float64(decFmt.Duration()) / float64(1000000)
 	kv := map[string]interface{}{
 		"duration": duration,
 	}
@@ -655,30 +645,12 @@ func NewTwitchClipStream(videoUrl string) Stream {
 }
 
 func NewLocalVideoStream(filepath string) Stream {
-	libAvBin := DEFAULT_LIB_AV_BIN
-
-	ops := runtime.GOOS
-	avRootPath := "lib/linux/x86_64/"
-	if ops == "windows" {
-		avRootPath = "lib/windows/x86_64/"
-		libAvBin = libAvBin + ".exe"
-	} else if ops == "darwin" {
-		avRootPath = "lib/darwin/x86_64/"
-	} else {
-		if ops != "linux" {
-			avRootPath = ""
-		}
-	}
-
 	return &LocalVideoStream{
 		StreamSchema: &StreamSchema{
 			Url:  filepath,
 			Kind: STREAM_TYPE_LOCAL,
 			Meta: NewStreamMeta(),
 		},
-
-		libAvRootPath: avRootPath,
-		libAvFile:     libAvBin,
 	}
 }
 
