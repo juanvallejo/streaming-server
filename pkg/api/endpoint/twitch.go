@@ -229,7 +229,7 @@ func twitchClipUrlFromAssetUrl(assetLoc string) string {
 	offsetPieces := strings.Split(lastSeg, "-offset-")
 	if len(offsetPieces) > 1 {
 		clipId := strings.Split(lastSeg, "-preview-")[0]
-		return fmt.Sprintf(twitchClipVodUrlTemplate, clipId)
+		return fmt.Sprintf(twitchClipUrlTemplate, clipId)
 	}
 
 	remainingPieces := strings.Split(lastSeg, "-")
