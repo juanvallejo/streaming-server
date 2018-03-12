@@ -202,7 +202,7 @@ func (c *Client) BroadcastFrom(evt string, data connection.MessageDataCodec) {
 func (c *Client) BroadcastAuthRequestTo(seg string) {
 	targetEndpoint := fmt.Sprintf("/api/auth/%s?%s=%s", seg, query.CONN_ID_KEY, c.UUID())
 
-	c.BroadcastTo("httprequest", &Response{
+	c.BroadcastTo("authorization", &Response{
 		Id:   c.UUID(),
 		From: c.GetUsernameOrId(),
 		Extra: map[string]interface{}{

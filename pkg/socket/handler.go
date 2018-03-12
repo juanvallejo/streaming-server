@@ -64,8 +64,8 @@ func (h *Handler) HandleClientConnection(conn connection.Connection) {
 
 				// remove user from authorizer role-bindings
 				authorizer := h.CommandHandler.Authorizer()
+				sPlayback.HandleDisconnection(c.Connection(), authorizer, h.clientHandler)
 				if authorizer != nil {
-					sPlayback.HandleDisconnection(c.Connection(), authorizer, h.clientHandler)
 					for _, b := range authorizer.Bindings() {
 						b.RemoveSubject(c.Connection())
 					}

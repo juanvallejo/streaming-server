@@ -93,7 +93,21 @@ func (p *Playback) State() PlaybackState {
 // HandleAdminDeparture receives a departing connection and determines if at least
 // one other connection in its namespace is bound to the admin role. If no other
 // admins are found, the adminHandler is notified.
+// If the connection had a slice of items associated with it in the queue, that slice
+// is deleted.
 func (p *Playback) HandleDisconnection(conn connection.Connection, authorizer rbac.Authorizer, handler client.SocketClientHandler) {
+	// find queue belonging to current connection
+	var queueItemToDelete queue.QueueItem = nil
+	for _, q := range p.queueHandler.Queue().List() {
+		if q.UUID() == conn.UUID() {
+			queueItemToDelete = q
+			break
+		}
+	}
+	if queueItemToDelete != nil {
+		p.queueHandler.Queue().DeleteItem(queueItemToDelete)
+	}
+
 	if authorizer == nil || conn == nil {
 		return
 	}

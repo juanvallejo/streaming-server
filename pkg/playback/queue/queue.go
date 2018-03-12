@@ -444,6 +444,9 @@ func (q *RoundRobinQueueSchema) CurrentIndex() int {
 }
 
 func (q *RoundRobinQueueSchema) DeleteItem(queue QueueItem) error {
+	q.Lock()
+	defer q.Unlock()
+
 	if qItem, exists := q.itemsById[queue.UUID()]; exists {
 		idx := -1
 		for i, v := range q.List() {
@@ -457,17 +460,17 @@ func (q *RoundRobinQueueSchema) DeleteItem(queue QueueItem) error {
 		// round-robin count. If rrCount is >= total
 		// length of queue after stack deletion, set
 		// rrCount to 0 (next item wraps back to first).
-		// If rrCount is less than the deleted QueueItem,
+		// If deleted QueueItem index is less than rrCount,
 		// decrease rrCount by one to "pull" items back.
 		if idx >= 0 {
 			q.ReorderableQueue.DeleteItem(queue)
-			if q.rrCount >= q.Size() {
-				q.rrCount = 0
-			} else if q.rrCount < idx {
+			if idx < q.rrCount {
 				q.rrCount--
 			}
-
 			if q.rrCount < 0 {
+				q.rrCount = 0
+			}
+			if q.rrCount >= q.Size() {
 				q.rrCount = 0
 			}
 		}

@@ -232,8 +232,6 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		"whoami",
 	})
 
-	// TODO: This is an admin rule - move to admin role
-	// once persistent client sessions are implemented.
 	queueMigrate := rbac.NewRule("migrate a user's queue to yours", []string{
 		"queue/migrate/*",
 	})
@@ -244,7 +242,6 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		streamInfo,
 		subtitles,
 		queueList,
-		queueMigrate,
 		userList,
 		volume,
 		whoami,
@@ -257,11 +254,12 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		userUpdateName,
 	}, viewerRole.Rules()...))
 	adminRole := rbac.NewRole(rbac.ADMIN_ROLE, append([]rbac.Rule{
-		streamControl,
 		debugReload,
-		roleEdit,
 		queueClearRoom,
+		queueMigrate,
 		queueOrderRoom,
+		roleEdit,
+		streamControl,
 	}, userRole.Rules()...))
 
 	roles := []rbac.Role{
