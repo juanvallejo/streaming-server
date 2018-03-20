@@ -105,4 +105,5 @@ func (h *ApiHandler) registerDefaultEndpoints() {
 	h.RegisterEndpoint(endpoint.NewYoutubeEndpoint())
 	h.RegisterEndpoint(endpoint.NewTwitchEndpoint())
 	h.RegisterEndpoint(endpoint.NewAuthEndpoint())
+	h.RegisterEndpoint(endpoint.NewSoundCloudEndpoint())
 }

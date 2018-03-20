@@ -97,7 +97,7 @@ func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segme
 	switch {
 	case segments[1] == "search":
 		if len(segments) < 3 {
-			HandleEndpointError(fmt.Errorf("not enough arguments: /search/query"), w)
+			HandleEndpointError(fmt.Errorf("not enough arguments: /search/term"), w)
 			return
 		}
 

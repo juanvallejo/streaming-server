@@ -23,6 +23,7 @@ const (
 	STREAM_TYPE_LOCAL       = "movie"
 	STREAM_TYPE_TWITCH      = "twitch"
 	STREAM_TYPE_TWITCH_CLIP = "twitch#clip"
+	STREAM_TYPE_SOUNDCLOUD  = "soundcloud"
 )
 
 type StreamMetadataCallback func(Stream, []byte, error)
@@ -644,6 +645,91 @@ func NewTwitchClipStream(videoUrl string) Stream {
 	}
 }
 
+// SoundCloudStream implements Stream
+// and represents a soundcloud video stream data and state
+type SoundCloudStream struct {
+	*StreamSchema
+
+	apiKey string
+}
+
+type SoundCloudResponseItem struct {
+	Title    string             `json:"title"`
+	Duration int                `json:"duration"`
+	User     SoundCloudUserItem `json:"user"`
+}
+
+type SoundCloudUserItem struct {
+	Thumb string `json:"avatar_url"`
+}
+
+type SoundCloudVideoItem map[string]interface{}
+
+func (s *SoundCloudStream) FetchMetadata(callback StreamMetadataCallback) {
+	videoId, err := soundCloudIdFromUrl(s.Url)
+	if err != nil {
+		callback(s, []byte{}, err)
+		return
+	}
+
+	go func(videoId, apiKey string, callback StreamMetadataCallback) {
+		client := &http.Client{}
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://api.soundcloud.com/tracks/%s?client_id=%s", videoId, apiKey), nil)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		res, err := client.Do(req)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		defer res.Body.Close()
+
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		scResponseItem := &SoundCloudResponseItem{}
+		err = json.Unmarshal(data, scResponseItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		// craft callback metadata response with default fields
+		scVideoItem := SoundCloudVideoItem{}
+		scVideoItem["name"] = scResponseItem.Title
+		scVideoItem["duration"] = float64(scResponseItem.Duration / 1000.0)
+		scVideoItem["thumb"] = scResponseItem.User.Thumb
+
+		jsonData, err := json.Marshal(scVideoItem)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		callback(s, jsonData, nil)
+	}(videoId, s.apiKey, callback)
+}
+
+func NewSoundCloudStream(videoUrl string) Stream {
+	return &SoundCloudStream{
+		StreamSchema: &StreamSchema{
+			Url:  videoUrl,
+			Kind: STREAM_TYPE_SOUNDCLOUD,
+			Meta: NewStreamMeta(),
+		},
+
+		apiKey: apiconfig.SC_API_KEY,
+	}
+}
+
 func NewLocalVideoStream(filepath string) Stream {
 	return &LocalVideoStream{
 		StreamSchema: &StreamSchema{
@@ -696,4 +782,9 @@ func twitchClipIdFromUrl(clipUrl string) (string, error) {
 	}
 
 	return slug, nil
+}
+
+func soundCloudIdFromUrl(permalink string) (string, error) {
+	segs := strings.Split(permalink, "/")
+	return segs[len(segs)-1], nil
 }

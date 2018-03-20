@@ -106,6 +106,10 @@ func (h *Handler) NewStream(streamUrl string) (Stream, error) {
 			s := NewYouTubeStream(streamUrl)
 			h.streams[streamUrl] = s
 			return s, nil
+		case "api.soundcloud.com", "soundcloud.com":
+			s := NewSoundCloudStream(streamUrl)
+			h.streams[streamUrl] = s
+			return s, nil
 		case "twitch.tv":
 			s := NewTwitchStream(streamUrl)
 			h.streams[streamUrl] = s
