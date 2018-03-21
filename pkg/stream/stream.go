@@ -666,22 +666,13 @@ type SoundCloudUserItem struct {
 type SoundCloudVideoItem map[string]interface{}
 
 func (s *SoundCloudStream) FetchMetadata(callback StreamMetadataCallback) {
-	videoId, err := soundCloudIdFromUrl(s.Url)
-	if err != nil {
-		callback(s, []byte{}, err)
-		return
-	}
-
 	go func(videoId, apiKey string, callback StreamMetadataCallback) {
-		client := &http.Client{}
+		// resolve permalink
+		permalink := url.QueryEscape(videoId)
 
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://api.soundcloud.com/tracks/%s?client_id=%s", videoId, apiKey), nil)
-		if err != nil {
-			callback(s, nil, err)
-			return
-		}
-
-		res, err := client.Do(req)
+		// resolve permalink into track id
+		resolveUrl := fmt.Sprintf("https://api.soundcloud.com/resolve.json?url=%s&client_id=%s", permalink, apiconfig.SC_API_KEY)
+		res, err := http.Get(resolveUrl)
 		if err != nil {
 			callback(s, nil, err)
 			return
@@ -715,7 +706,7 @@ func (s *SoundCloudStream) FetchMetadata(callback StreamMetadataCallback) {
 		}
 
 		callback(s, jsonData, nil)
-	}(videoId, s.apiKey, callback)
+	}(s.Url, s.apiKey, callback)
 }
 
 func NewSoundCloudStream(videoUrl string) Stream {
