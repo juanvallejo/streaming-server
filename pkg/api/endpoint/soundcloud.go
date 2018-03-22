@@ -14,6 +14,9 @@ import (
 
 const (
 	SC_ENDPOINT_PREFIX = "/soundcloud"
+
+	SoundCloudPlaylistItem = "soundcloud#playlistItem"
+	SoundCloudStreamItem   = "soundcloud#stream"
 )
 
 var (
@@ -22,12 +25,16 @@ var (
 	soundCloudResolveEndpointTemplate = "https://api.soundcloud.com/resolve.json?url=%s&client_id=%s"
 )
 
+type SoundCloudPlaylist struct {
+	Tracks []*SoundCloudItem `json:"tracks"`
+}
+
 type SoundCloudItem struct {
 	*EndpointResponseItem
 
-	Id        int                `json:"id"`
-	Permalink string             `json:"permalink_url"`
-	User      SoundCloudUserInfo `json:"user"`
+	Id        int    `json:"id"`
+	Permalink string `json:"permalink_url"`
+	Artwork   string `json:"artwork_url"`
 
 	Errors []SoundCloudEndpointError `json:"errors"`
 }
@@ -38,10 +45,6 @@ type SoundCloudEndpointError struct {
 
 type SoundCloudEndpointResponse struct {
 	Items []*SoundCloudItem `json:"items"`
-}
-
-type SoundCloudUserInfo struct {
-	Thumb string `json:"avatar_url"`
 }
 
 // SoundCloudEndpoint implements ApiEndpoint
@@ -107,6 +110,11 @@ func handleSoundCloudApiStream(rawPermalink string, w http.ResponseWriter) {
 		return
 	}
 
+	if len(data) == 0 {
+		HandleEndpointError(fmt.Errorf("item not available for playback"), w)
+		return
+	}
+
 	respBytes, err := encodeApiResponse(data)
 	if err != nil {
 		HandleEndpointError(err, w)
@@ -118,6 +126,10 @@ func handleSoundCloudApiStream(rawPermalink string, w http.ResponseWriter) {
 }
 
 func encodeApiResponse(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("no data to encode")
+	}
+
 	resp := &SoundCloudEndpointResponse{}
 	item := &SoundCloudItem{}
 	err := json.Unmarshal(data, &item)
@@ -129,10 +141,32 @@ func encodeApiResponse(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("error: %v", item.Errors[0].Message)
 	}
 
+	if item.Kind == "playlist" {
+		playlist := &SoundCloudPlaylist{}
+		if err := json.Unmarshal(data, &playlist); err != nil {
+			return nil, err
+		}
+
+		for _, track := range playlist.Tracks {
+			track.Kind = SoundCloudPlaylistItem
+			track.Thumb = track.Artwork
+			track.Url = track.Permalink
+			resp.Items = append(resp.Items, track)
+		}
+
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+
+		return respBytes, nil
+	}
+
 	// default required spec fields for an api response item
-	item.Thumb = item.User.Thumb
+	item.Thumb = item.Artwork
 	item.Url = item.Permalink
 
+	item.Kind = SoundCloudStreamItem
 	resp.Items = append(resp.Items, item)
 
 	respBytes, err := json.Marshal(resp)
