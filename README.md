@@ -1,11 +1,11 @@
 Streaming Server
 ================
 
-![Working demo at FlickTrack.me](https://i.imgur.com/8vE0EBf.png)
+![Working demo at FlickTrack.me](https://i.imgur.com/YhJ1sUP.jpg)
 
 ### What?
 
-Multi-client media streaming server. Keeps all clients in sync.  
+Multi-client media streaming server. Watch videos with friends, keeping everyone in sync.
 
 ### Why?
 
@@ -13,7 +13,7 @@ Thought it'd be fun.
 
 ### Installing
 
-Requires `go` to compile.
+Requires [Go](https://golang.org/) and [ffmpeg-devel](https://www.ffmpeg.org/download.html) to compile.
 
 1. Either `git clone` or `go get` this repo.
   - `cd $GOPATH && go get github.com/juanvallejo/streaming-server`
