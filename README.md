@@ -7,6 +7,8 @@ Streaming Server
 
 Multi-client media streaming server. Watch videos with friends, keeping everyone in sync.
 
+Please [see the Wiki for a detailed guide](https://github.com/juanvallejo/streaming-server/wiki) on using this project.
+
 ## Why?
 
 Thought it'd be fun.
@@ -14,6 +16,10 @@ Thought it'd be fun.
 ## Downloading
 
 There are currently no downloads available, links will appear here in the future for binary downloads of this project. Please see the Compiling section to learn how to compile this project for now.
+
+## Building
+
+Alternatively, you may choose to compile this project yourself rather than downloading a pre-compiled binary. See the sub-sections below for detailed steps and requirements.
 
 ### Compiling
 
