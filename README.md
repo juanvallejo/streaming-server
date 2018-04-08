@@ -3,15 +3,19 @@ Streaming Server
 
 ![Working demo at FlickTrack.me](https://i.imgur.com/YhJ1sUP.jpg)
 
-### What?
+## What?
 
 Multi-client media streaming server. Watch videos with friends, keeping everyone in sync.
 
-### Why?
+## Why?
 
 Thought it'd be fun.
 
-### Installing
+## Downloading
+
+There are currently no downloads available, links will appear here in the future for binary downloads of this project. Please see the Compiling section to learn how to compile this project for now.
+
+### Compiling
 
 Requires [Go](https://golang.org/) and [ffmpeg-devel](https://www.ffmpeg.org/download.html) to compile.
 
@@ -33,7 +37,13 @@ Once you've followed these steps, you should see a newly created `bin` directory
 The server will bind to port `8080` by default. Once it is running, you can access the web client at `http://localhost:8080`.
 To access a stream room, create a room by going to `http://localhost:8080/v/roomname`.
 
-### Further reading
+## Further reading
+
+### Wiki
+
+For up-to-date and comprehensive information about using this project, please read [the wiki](https://github.com/juanvallejo/streaming-server/wiki).
+
+### Simple Overview
 
 #### Rooms
 
@@ -88,6 +98,8 @@ To begin playback, use the command:
 Performing this command before setting a stream will result in a playback error.
 
 #### The queue
+
+*Please refer to [the wiki](https://github.com/juanvallejo/streaming-server/wiki) for a comprehensive guide and explanation of the queue.*
 
 It is also possible to queue media. Queuing differs from the `/stream set ...` command in that `set` immediately loads a video, bypassing the queue entirely, 
 while `queueing` simply pushes a stream object into an internal list.
