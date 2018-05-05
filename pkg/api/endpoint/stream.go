@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanvallejo/streaming-server/pkg/api/types"
 	paths "github.com/juanvallejo/streaming-server/pkg/server/path"
+	pathutil "github.com/juanvallejo/streaming-server/pkg/server/path"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
@@ -104,7 +105,7 @@ func handleStreamMetadata(streamUrl string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	data, err := stream.FetchLocalVideoMetadata(localStream)
+	data, err := stream.FetchVideoMetadata(pathutil.StreamDataFilePathFromUrl(localStream.Url))
 	if err != nil {
 		HandleEndpointError(err, w)
 		return

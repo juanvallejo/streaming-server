@@ -21,6 +21,7 @@ import (
 const (
 	STREAM_TYPE_YOUTUBE     = "youtube"
 	STREAM_TYPE_LOCAL       = "movie"
+	STREAM_TYPE_REMOTE      = "movie"
 	STREAM_TYPE_TWITCH      = "twitch"
 	STREAM_TYPE_TWITCH_CLIP = "twitch#clip"
 	STREAM_TYPE_SOUNDCLOUD  = "soundcloud"
@@ -378,6 +379,31 @@ func (s *YouTubeStream) FetchMetadata(callback StreamMetadataCallback) {
 	}(videoId, s.apiKey, callback)
 }
 
+func NewYouTubeStream(videoUrl string) Stream {
+	// normalize videoUrl
+	segs := strings.Split(videoUrl, "&")
+	if len(segs) > 1 {
+		videoUrl = segs[0]
+	}
+
+	thumb := ""
+	id, err := ytVideoIdFromUrl(videoUrl)
+	if err == nil {
+		thumb = "https://img.youtube.com/vi/" + id + "/default.jpg"
+	}
+
+	return &YouTubeStream{
+		StreamSchema: &StreamSchema{
+			Url:       videoUrl,
+			Thumbnail: thumb,
+			Kind:      STREAM_TYPE_YOUTUBE,
+			Meta:      NewStreamMeta(),
+		},
+
+		apiKey: apiconfig.YT_API_KEY,
+	}
+}
+
 // LocalVideoStream implements Stream
 // and represents a video stream from
 // a local filepath.
@@ -387,7 +413,7 @@ type LocalVideoStream struct {
 
 func (s *LocalVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 	go func(s *LocalVideoStream, callback StreamMetadataCallback) {
-		data, err := FetchLocalVideoMetadata(s)
+		data, err := FetchVideoMetadata(pathutil.StreamDataFilePathFromUrl(s.Url))
 		if err != nil {
 			callback(s, []byte{}, err)
 			return
@@ -398,9 +424,7 @@ func (s *LocalVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 }
 
 // FetchLocalVideoMetadata is a blocking function that retrieves metadata for a local video stream
-func FetchLocalVideoMetadata(s *LocalVideoStream) ([]byte, error) {
-	fpath := pathutil.StreamDataFilePathFromUrl(s.Url)
-
+func FetchVideoMetadata(fpath string) ([]byte, error) {
 	// open format (container) context
 	decFmt, err := avformat.NewContextForInput()
 	if err != nil {
@@ -429,6 +453,45 @@ func FetchLocalVideoMetadata(s *LocalVideoStream) ([]byte, error) {
 	}
 
 	return m, nil
+}
+
+func NewLocalVideoStream(filepath string) Stream {
+	return &LocalVideoStream{
+		StreamSchema: &StreamSchema{
+			Url:  filepath,
+			Kind: STREAM_TYPE_LOCAL,
+			Meta: NewStreamMeta(),
+		},
+	}
+}
+
+func (s *RemoteVideoStream) FetchMetadata(callback StreamMetadataCallback) {
+	go func(s *RemoteVideoStream, callback StreamMetadataCallback) {
+		data, err := FetchVideoMetadata(s.Url)
+		if err != nil {
+			callback(s, []byte{}, err)
+			return
+		}
+
+		callback(s, data, nil)
+	}(s, callback)
+}
+
+// RemoteVideoStream implements Stream
+// and represents a video stream from
+// a remote location.
+type RemoteVideoStream struct {
+	*StreamSchema
+}
+
+func NewRemoteVideoStream(url string) Stream {
+	return &RemoteVideoStream{
+		StreamSchema: &StreamSchema{
+			Url:  url,
+			Kind: STREAM_TYPE_REMOTE,
+			Meta: NewStreamMeta(),
+		},
+	}
 }
 
 // TwitchStream implements Stream
@@ -510,31 +573,6 @@ func (s *TwitchStream) FetchMetadata(callback StreamMetadataCallback) {
 
 		callback(s, jsonData, nil)
 	}(videoId, s.apiKey, callback)
-}
-
-func NewYouTubeStream(videoUrl string) Stream {
-	// normalize videoUrl
-	segs := strings.Split(videoUrl, "&")
-	if len(segs) > 1 {
-		videoUrl = segs[0]
-	}
-
-	thumb := ""
-	id, err := ytVideoIdFromUrl(videoUrl)
-	if err == nil {
-		thumb = "https://img.youtube.com/vi/" + id + "/default.jpg"
-	}
-
-	return &YouTubeStream{
-		StreamSchema: &StreamSchema{
-			Url:       videoUrl,
-			Thumbnail: thumb,
-			Kind:      STREAM_TYPE_YOUTUBE,
-			Meta:      NewStreamMeta(),
-		},
-
-		apiKey: apiconfig.YT_API_KEY,
-	}
 }
 
 func NewTwitchStream(videoUrl string) Stream {
@@ -718,16 +756,6 @@ func NewSoundCloudStream(videoUrl string) Stream {
 		},
 
 		apiKey: apiconfig.SC_API_KEY,
-	}
-}
-
-func NewLocalVideoStream(filepath string) Stream {
-	return &LocalVideoStream{
-		StreamSchema: &StreamSchema{
-			Url:  filepath,
-			Kind: STREAM_TYPE_LOCAL,
-			Meta: NewStreamMeta(),
-		},
 	}
 }
 

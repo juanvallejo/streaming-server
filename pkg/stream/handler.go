@@ -123,6 +123,20 @@ func (h *Handler) NewStream(streamUrl string) (Stream, error) {
 			s := NewTwitchClipStream(streamUrl)
 			h.streams[streamUrl] = s
 			return s, nil
+		default:
+			// handle remote urls
+			supportedFormats := map[string]bool{
+				".mp4":  true,
+				".webm": true,
+				".mkv":  true,
+			}
+
+			format := paths.FileExtensionFromFilePath(u.Path)
+			if supported, ok := supportedFormats[strings.ToLower(format)]; ok && supported {
+				s := NewRemoteVideoStream(streamUrl)
+				h.streams[streamUrl] = s
+				return s, nil
+			}
 		}
 
 		return nil, fmt.Errorf("stream resource location interpreted as url, but stream source is not supported for: %q", streamUrl)
