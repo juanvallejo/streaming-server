@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"time"
+
 	api "github.com/juanvallejo/streaming-server/pkg/api/types"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
 	"github.com/juanvallejo/streaming-server/pkg/socket/cmd/rbac"
@@ -192,10 +194,13 @@ func GenerateAuthCookie(cookieData *rbac.AuthCookieData) (*http.Cookie, error) {
 		return nil, err
 	}
 
+	month := 24 * time.Hour * 7 * 4
+
 	return &http.Cookie{
 		Name:     rbac.AuthCookieName,
 		Value:    string(data),
 		HttpOnly: false,
+		Expires:  time.Now().Add(month), // set cookie lifetime to 1 month
 	}, nil
 }
 
