@@ -119,9 +119,11 @@ func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace conn
 		// auth data in cookie is no longer valid -
 		// the namespace for which the stored auth
 		// data applies to no longer exists.
-		if ns.Id != namespace.UUID() {
-			return []rbac.Role{}, fmt.Errorf("valid namespace found, but auth-cookie uuid did not match namespace uuid (%q != %q)", ns.Id, namespace.UUID())
-		}
+		// this gate is optional, in order to enforce a
+		// more temporary usage of rooms.
+		//if ns.Id != namespace.UUID() {
+		//	return []rbac.Role{}, fmt.Errorf("valid namespace found, but auth-cookie uuid did not match namespace uuid (%q != %q)", ns.Id, namespace.UUID())
+		//}
 
 		for _, r := range ns.Roles {
 			if role, exists := authorizer.Role(r); exists {
