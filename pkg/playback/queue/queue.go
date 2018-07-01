@@ -70,7 +70,7 @@ func NewQueueHandler(queue Queue) QueueHandler {
 	}
 }
 
-type QueueVisitor func(QueueItem)
+type QueueVisitor func(QueueItem) bool
 
 // Queue performs collection operations on a fifo structure
 type Queue interface {
@@ -247,7 +247,9 @@ func (q *QueueSchema) Size() int {
 
 func (q *QueueSchema) Visit(visitor QueueVisitor) {
 	for _, queueItem := range q.Items {
-		visitor(queueItem)
+		if !visitor(queueItem) {
+			break
+		}
 	}
 }
 
@@ -390,7 +392,9 @@ func (q *RoundRobinQueueSchema) Visit(visitor QueueVisitor) {
 		if !ok {
 			continue
 		}
-		visitor(agg)
+		if !visitor(agg) {
+			break
+		}
 	}
 }
 

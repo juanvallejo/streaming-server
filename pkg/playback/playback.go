@@ -215,10 +215,10 @@ func (p *Playback) OnTick(callback TimerCallback) {
 func (p *Playback) ClearQueue() error {
 	var errs []error
 
-	p.queueHandler.Queue().Visit(func(item queue.QueueItem) {
+	p.queueHandler.Queue().Visit(func(item queue.QueueItem) bool {
 		userQueue, ok := item.(queue.AggregatableQueue)
 		if !ok {
-			return
+			return true
 		}
 
 		for _, userQueueItem := range userQueue.List() {
@@ -226,6 +226,8 @@ func (p *Playback) ClearQueue() error {
 				errs = append(errs, err)
 			}
 		}
+
+		return true
 	})
 
 	p.queueHandler.Clear()
@@ -334,13 +336,15 @@ func (p *Playback) GetOrCreateStreamFromUrl(url string, user *client.Client, str
 			if u, ok := ref.(*client.Client); ok {
 				if userQueue, userQueueExists, _ := util.GetUserQueue(u, p.GetQueue()); userQueueExists {
 					exists := false
-					userQueue.Visit(func(item queue.QueueItem) {
+					userQueue.Visit(func(item queue.QueueItem) bool {
 						// determine if item we are trying to reference under a new
 						// user still exists under the previous user's queue.
 						if item.UUID() == s.UUID() {
 							exists = true
-							return
+							return false // stop visiting any remaining queues
 						}
+
+						return true
 					})
 
 					if exists {
