@@ -130,7 +130,6 @@ func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace conn
 				roles = append(roles, role)
 			}
 		}
-		break
 	}
 
 	if len(roles) == 0 {

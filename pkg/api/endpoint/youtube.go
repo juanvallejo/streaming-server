@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/api/config"
 	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
+
+	"github.com/rylio/ytdl"
 )
 
 const (
@@ -17,6 +20,7 @@ const (
 	YoutubePlaylistItem = "youtube#playlistItem"
 	YoutubeSearchResult = "youtube#searchResult"
 	YoutubeVideoKind    = "youtube#video"
+	YoutubeAssetKind    = "youtube#asset"
 )
 
 var (
@@ -111,9 +115,83 @@ func (e *YoutubeEndpoint) Handle(connHandler connection.ConnectionHandler, segme
 
 		handleApiList(segments[2], w)
 		return
+	case segments[1] == "transform":
+		if len(segments) < 3 {
+			HandleEndpointError(fmt.Errorf("not enough arguments: /transform/url"), w)
+			return
+		}
+
+		handleUrlTransform(segments[2], w)
+		return
 	}
 
 	HandleEndpointError(fmt.Errorf("unimplemented parameter"), w)
+}
+
+// handleUrlTransform receives a standard YouTube url (e.g. https://youtube.com/watch?v=VIDEO_ID)
+// and returns the actual resource url for the corresponding video.
+func handleUrlTransform(publicUrl string, w http.ResponseWriter) {
+	unescaped, err := url.PathUnescape(publicUrl)
+	if err != nil {
+		HandleEndpointError(fmt.Errorf("error parsing url fragment: %v", err), w)
+		return
+	}
+
+	vidUrl, err := url.Parse(unescaped)
+	if err != nil {
+		HandleEndpointError(fmt.Errorf("error parsing into url obj: %v", err), w)
+		return
+	}
+
+	info, err := ytdl.GetVideoInfo(vidUrl)
+	if err != nil {
+		HandleEndpointError(fmt.Errorf("unable to fetch youtube video info: %v", err), w)
+		return
+	}
+
+	format := info.Formats[0]
+
+	// find an mp4 format with an okay quality
+	for _, f := range info.Formats {
+		if f.Extension != "mp4" {
+			continue
+		}
+
+		format = f
+		break
+	}
+
+	fmt.Printf("INF HTTP PATH YOUTUBE found video format for youtube url %q: %s (%s)\n", vidUrl, format.Extension, format.Resolution)
+
+	u, err := info.GetDownloadURL(format)
+	if err != nil {
+		HandleEndpointError(fmt.Errorf("unable to fetch download url: %v", err), w)
+		return
+	}
+
+	// add original youtube video id
+	respItem := &YoutubeItem{
+		EndpointResponseItem: &EndpointResponseItem{
+			Title: info.Title,
+			Url:   fmt.Sprintf("%s&youtubeid=%s", u.String(), vidUrl.Query().Get("v")),
+			Kind:  YoutubeAssetKind,
+		},
+
+		Info:    YoutubeItemInfo{},
+		Snippet: YoutubeItemSnippet{},
+	}
+
+	resp := &YoutubeEndpointResponse{
+		Items: []*YoutubeItem{respItem},
+	}
+
+	respBytes, err := resp.Encode()
+	if err != nil {
+		HandleEndpointError(err, w)
+		return
+	}
+
+	w.Write(respBytes)
 }
 
 func handleApiSearch(searchQuery string, w http.ResponseWriter) {

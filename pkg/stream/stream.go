@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	STREAM_TYPE_YOUTUBE     = "youtube"
-	STREAM_TYPE_LOCAL       = "movie"
-	STREAM_TYPE_REMOTE      = "movie"
-	STREAM_TYPE_TWITCH      = "twitch"
-	STREAM_TYPE_TWITCH_CLIP = "twitch#clip"
-	STREAM_TYPE_SOUNDCLOUD  = "soundcloud"
+	STREAM_TYPE_YOUTUBE       = "youtube"
+	STREAM_TYPE_YOUTUBE_ASSET = "movie"
+	STREAM_TYPE_LOCAL         = "movie"
+	STREAM_TYPE_REMOTE        = "movie"
+	STREAM_TYPE_TWITCH        = "twitch"
+	STREAM_TYPE_TWITCH_CLIP   = "twitch#clip"
+	STREAM_TYPE_SOUNDCLOUD    = "soundcloud"
 )
 
 type StreamMetadataCallback func(Stream, []byte, error)
@@ -404,6 +405,89 @@ func NewYouTubeStream(videoUrl string) Stream {
 	}
 }
 
+// YoutubeAssetStream implements Stream
+// and represents a video stream directly
+// from its YouTube source.
+type YouTubeAssetStream struct {
+	apiKey string
+	*StreamSchema
+}
+
+func (s *YouTubeAssetStream) FetchMetadata(callback StreamMetadataCallback) {
+	videoId, err := youtubeAssetIdFromUrl(s.Url)
+	if err != nil {
+		callback(s, []byte{}, err)
+		return
+	}
+
+	go func(s *YouTubeAssetStream, apiKey string, callback StreamMetadataCallback) {
+		res, err := http.Get("https://www.googleapis.com/youtube/v3/videos?id=" + videoId + "&key=" + apiKey + "&part=contentDetails,snippet")
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		defer res.Body.Close()
+
+		data, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		dataItems := YouTubeVideoListResponse{
+			Items: []YouTubeVideoItem{},
+		}
+		err = json.Unmarshal(data, &dataItems)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		if len(dataItems.Items) == 0 {
+			callback(s, nil, fmt.Errorf("no contentData found for video id %q", videoId))
+			return
+		}
+
+		// parse duration from youtube api format to int64
+		videoData := dataItems.Items[0]
+		err = videoData.ParseDuration()
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		// append title
+		videoData.ContentDetails["name"] = videoData.Snippet.Title
+		jsonData, err := json.Marshal(videoData.ContentDetails)
+		if err != nil {
+			callback(s, nil, err)
+			return
+		}
+
+		callback(s, jsonData, nil)
+	}(s, s.apiKey, callback)
+}
+
+func NewYouTubeAssetStream(url string) *YouTubeAssetStream {
+	thumb := ""
+	id, err := youtubeAssetIdFromUrl(url)
+	if err == nil {
+		thumb = "https://img.youtube.com/vi/" + id + "/default.jpg"
+	}
+
+	return &YouTubeAssetStream{
+		StreamSchema: &StreamSchema{
+			Url:       url,
+			Thumbnail: thumb,
+			Kind:      STREAM_TYPE_YOUTUBE_ASSET,
+			Meta:      NewStreamMeta(),
+		},
+
+		apiKey: apiconfig.YT_API_KEY,
+	}
+}
+
 // LocalVideoStream implements Stream
 // and represents a video stream from
 // a local filepath.
@@ -465,6 +549,13 @@ func NewLocalVideoStream(filepath string) Stream {
 	}
 }
 
+// RemoteVideoStream implements Stream
+// and represents a video stream from
+// a remote location.
+type RemoteVideoStream struct {
+	*StreamSchema
+}
+
 func (s *RemoteVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 	go func(s *RemoteVideoStream, callback StreamMetadataCallback) {
 		data, err := FetchVideoMetadata(s.Url)
@@ -475,13 +566,6 @@ func (s *RemoteVideoStream) FetchMetadata(callback StreamMetadataCallback) {
 
 		callback(s, data, nil)
 	}(s, callback)
-}
-
-// RemoteVideoStream implements Stream
-// and represents a video stream from
-// a remote location.
-type RemoteVideoStream struct {
-	*StreamSchema
 }
 
 func NewRemoteVideoStream(url string) Stream {
@@ -798,6 +882,20 @@ func twitchClipIdFromUrl(clipUrl string) (string, error) {
 	slug := u.Query().Get("clip")
 	if len(slug) == 0 {
 		return "", fmt.Errorf("invalid clip url - missing clip parameter")
+	}
+
+	return slug, nil
+}
+
+func youtubeAssetIdFromUrl(assetUrl string) (string, error) {
+	u, err := url.Parse(assetUrl)
+	if err != nil {
+		return "", err
+	}
+
+	slug := u.Query().Get("youtubeid")
+	if len(slug) == 0 {
+		return "", fmt.Errorf("invalid clip url - missing youtubeid parameter")
 	}
 
 	return slug, nil

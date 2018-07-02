@@ -131,6 +131,13 @@ func (h *Handler) NewStream(streamUrl string) (Stream, error) {
 				".mkv":  true,
 			}
 
+			// determine if url is for youtube video asset
+			if strings.HasSuffix(host, "googlevideo.com") {
+				s := NewYouTubeAssetStream(streamUrl)
+				h.streams[streamUrl] = s
+				return s, nil
+			}
+
 			format := paths.FileExtensionFromFilePath(u.Path)
 			if supported, ok := supportedFormats[strings.ToLower(format)]; ok && supported {
 				s := NewRemoteVideoStream(streamUrl)
