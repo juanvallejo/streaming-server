@@ -39,7 +39,8 @@ Requires [Go](https://golang.org/) and [ffmpeg-devel](https://www.ffmpeg.org/dow
 Once you've followed these steps, you should see a newly created `bin` directory containing a `streaming` binary.
  1. `./bin/streaming`
    - You can optionally specify the port to bind to with `./bin/streaming --port <PORT>`
- 
+   - You can optionally specify the `--rbac` flag to enable authorization (room admins, user roles, etc.)  `./bin/streaming --rbac`
+
 The server will bind to port `8080` by default. Once it is running, you can access the web client at `http://localhost:8080`.
 To access a stream room, create a room by going to `http://localhost:8080/v/roomname`.
 
