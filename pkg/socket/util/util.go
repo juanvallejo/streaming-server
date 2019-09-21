@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
+	"path"
+	"runtime"
 	"strings"
 
 	"time"
@@ -90,12 +90,12 @@ func NamespaceFromRequest(req *http.Request) (string, error) {
 }
 
 func GetCurrentDirectory() string {
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		panic(fmt.Sprintf("unable to get filepath: %v", err))
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("no caller information")
 	}
 
-	return dir
+	return path.Dir(filename)
 }
 
 func rolesFromCookie(r *http.Request, authorizer rbac.Authorizer, namespace connection.Namespace) ([]rbac.Role, error) {

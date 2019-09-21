@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/juanvallejo/streaming-server/pkg/playback"
 	"github.com/juanvallejo/streaming-server/pkg/socket/client"
+	"github.com/juanvallejo/streaming-server/pkg/socket/connection"
 	"github.com/juanvallejo/streaming-server/pkg/socket/util"
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
@@ -18,10 +21,10 @@ type SubtitlesCmd struct {
 
 const (
 	SUBTITLES_NAME        = "subtitles"
-	SUBTITLES_DESCRIPTION = "controls stream subtitles"
-	SUBTITLES_USAGE       = "Usage: /" + SUBTITLES_NAME + " &lt;(on|off)&gt;"
+	SUBTITLES_DESCRIPTION = "controls stream subtitles for every client"
+	SUBTITLES_USAGE       = "Usage: /" + SUBTITLES_NAME + " &lt;(off|path/to/subtitles.srt)&gt;"
 
-	SUBTITLES_FILE_ROOT = "/src/static/subtitles/"
+	SUBTITLES_FILE_ROOT = "/webclient/src/static/subtitles/"
 )
 
 var (
@@ -29,10 +32,6 @@ var (
 )
 
 func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *client.Client, clientHandler client.SocketClientHandler, playbackHandler playback.PlaybackHandler, streamHandler stream.StreamHandler) (string, error) {
-	if len(args) == 0 {
-		return h.usage, nil
-	}
-
 	username, hasUsername := user.GetUsername()
 	if !hasUsername {
 		username = user.UUID()
@@ -45,45 +44,114 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 	}
 
 	currentDir := util.GetCurrentDirectory()
-	subFile := roomToSubsFile(userRoom.Name())
+	subtitlesRootDir := path.Join(currentDir, "/../../", SUBTITLES_FILE_ROOT)
 
-	if args[0] == "on" {
-		_, err := os.Stat(currentDir + "/../../" + SUBTITLES_FILE_ROOT + subFile)
-		if err != nil {
-			log.Printf("SOCKET CLIENT ERR unable to load subtitle file for stream %q: %v", userRoom, err)
-			return "", fmt.Errorf("error: missing subtitles file for current stream")
+	subtitlesFilepath := ""
+	if len(args) == 0 {
+		subtitlesFilepath = guessSubtitlesFilepathFromCurrentNamespace(playbackHandler, userRoom, subtitlesRootDir)
+		if len(subtitlesFilepath) == 0 {
+			return "", fmt.Errorf("error: no subtitles filepath specified")
 		}
-
-		user.BroadcastTo("info_subtitles", &client.Response{
+	} else if args[0] == "off" {
+		user.BroadcastAll("info_subtitles", &client.Response{
 			Id:   user.UUID(),
 			From: username,
 			Extra: map[string]interface{}{
-				"path": SUBTITLES_FILE_ROOT + subFile,
-				"on":   true,
+				"on": false,
 			},
 		})
-		user.BroadcastSystemMessageFrom(fmt.Sprintf("%q has requested subtitles", username))
-		return "attempting to add subtitles to your stream...", nil
+
+		user.BroadcastSystemMessageAll(fmt.Sprintf("%q has requested to remove subtitles from the stream", username))
+		return "attempting to remove subtitles from the stream...", nil
+	} else {
+		subtitlesFilepath = path.Join(subtitlesRootDir, args[0])
 	}
 
-	if args[0] == "off" {
-		user.BroadcastTo("info_subtitles", &client.Response{
-			Id:   user.UUID(),
-			From: username,
-			Extra: map[string]interface{}{
-				"path": SUBTITLES_FILE_ROOT + subFile,
-				"on":   false,
-			},
-		})
-		return "attempting to remove subtitles from your stream...", nil
+	_, err := os.Stat(subtitlesFilepath)
+	if err != nil {
+		log.Printf("SOCKET CLIENT ERR unable to load subtitle file for stream %q: %v", userRoom, err)
+		return "", fmt.Errorf("error: missing subtitles file for current stream")
 	}
 
-	return h.usage, nil
+	log.Printf("SOCKET CLIENT INFO attempting to load subtitles file %q\n", subtitlesFilepath)
+
+	clientRelativeSubtitlesFilepath := strings.Split(subtitlesFilepath, "/webclient/")
+	if len(clientRelativeSubtitlesFilepath) < 2 {
+		return "", fmt.Errorf("error: unable to parse client-relative subtitles URL")
+	}
+
+	user.BroadcastAll("info_subtitles", &client.Response{
+		Id:   user.UUID(),
+		From: username,
+		Extra: map[string]interface{}{
+			"path": path.Join("/", clientRelativeSubtitlesFilepath[1]),
+			"on":   true,
+		},
+	})
+
+	user.BroadcastSystemMessageAll(fmt.Sprintf("%q has requested to remove subtitles from the stream", username))
+	return "attempting to add subtitles to the stream...", nil
 }
 
-func roomToSubsFile(roomName string) string {
-	segs := strings.Split(roomName, ".")
-	return segs[0] + ".vtt"
+// guessSubtitlesFilepathFromCurrentNamespace lists all valid subtitle files in the SUBTITLES_FILE_ROOT
+// and attempts to find the first file whose name matches the current stream's URL minus its extension
+func guessSubtitlesFilepathFromCurrentNamespace(playbackHandler playback.PlaybackHandler, userRoom connection.Namespace, subtitlesRootDir string) string {
+	validSubtitleExts := map[string]bool{
+		".vtt": true,
+	}
+
+	dir, err := os.Stat(subtitlesRootDir)
+	if err != nil || !dir.IsDir() {
+		return ""
+	}
+
+	files, err := ioutil.ReadDir(subtitlesRootDir)
+	if err != nil {
+		return ""
+	}
+
+	if len(files) == 0 {
+		return ""
+	}
+
+	validFilenames := []string{}
+	for _, file := range files {
+		if !validSubtitleExts[path.Ext(file.Name())] {
+			continue
+		}
+
+		validFilenames = append(validFilenames, file.Name())
+	}
+
+	if len(validFilenames) == 0 {
+		return ""
+	}
+
+	nsPlayback, exists := playbackHandler.PlaybackByNamespace(userRoom)
+	if !exists {
+		return ""
+	}
+
+	currentStream, exists := nsPlayback.GetStream()
+	if !exists {
+		return ""
+	}
+
+	streamURLWithNoExt := strings.TrimSuffix(currentStream.GetStreamURL(),
+		path.Ext(currentStream.GetStreamURL()))
+
+	for _, validSubFilename := range validFilenames {
+		subFilenameWithNoExt := strings.TrimSuffix(validSubFilename,
+			path.Ext(validSubFilename))
+
+		if subFilenameWithNoExt != streamURLWithNoExt {
+			continue
+		}
+
+		return path.Join(subtitlesRootDir, validSubFilename)
+	}
+
+	return ""
 }
 
 func NewCmdSubtitles() SocketCommand {

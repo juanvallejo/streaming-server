@@ -212,6 +212,13 @@ func (c *Client) BroadcastAuthRequestTo(seg string) {
 	})
 }
 
+// BroadcastSystemMessageFrom emits a system-level message to the current
+// client as well as the rest of its channel
+func (c *Client) BroadcastSystemMessageAll(msg string) {
+	c.BroadcastSystemMessageFrom(msg)
+	c.BroadcastSystemMessageTo(msg)
+}
+
 // BroadcastSystemMessageFrom emits a system-level message from the current
 // client to the rest of its channel
 func (c *Client) BroadcastSystemMessageFrom(msg string) {

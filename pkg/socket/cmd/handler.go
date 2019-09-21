@@ -180,8 +180,10 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 		"stream/seek",
 	})
 	subtitles := rbac.NewRule("control stream subtitles", []string{
-		"subtitles/on",
-		"subtitles/off",
+		"subs",
+		"subtitles",
+		"subtitles/*",
+		"subs/*",
 	})
 	queueAdd := rbac.NewRule("add streams to the queue", []string{
 		"queue/add/*",
@@ -240,7 +242,6 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 	viewerRole := rbac.NewRole(rbac.VIEWER_ROLE, []rbac.Rule{
 		help,
 		streamInfo,
-		subtitles,
 		queueList,
 		userList,
 		volume,
@@ -255,6 +256,7 @@ func AddDefaultRoles(authz rbac.Authorizer) {
 	}, viewerRole.Rules()...))
 	adminRole := rbac.NewRole(rbac.ADMIN_ROLE, append([]rbac.Rule{
 		debugReload,
+		subtitles,
 		queueClearRoom,
 		queueMigrate,
 		queueOrderRoom,
