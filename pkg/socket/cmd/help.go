@@ -9,7 +9,7 @@ import (
 )
 
 type HelpCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -33,7 +33,7 @@ func (h *HelpCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 func NewCmdHelp() SocketCommand {
 	return &HelpCmd{
-		Command{
+		&Command{
 			name:        HELP_NAME,
 			description: HELP_DESCRIPTION,
 			usage:       HELP_USAGE,

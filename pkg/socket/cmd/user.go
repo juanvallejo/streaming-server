@@ -10,7 +10,7 @@ import (
 )
 
 type UserCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -78,7 +78,7 @@ func (h *UserCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 func NewCmdUser() SocketCommand {
 	return &UserCmd{
-		Command{
+		&Command{
 			name:        USER_NAME,
 			description: USER_DESCRIPTION,
 			usage:       USER_USAGE,

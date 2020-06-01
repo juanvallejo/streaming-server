@@ -16,7 +16,7 @@ import (
 )
 
 type QueueCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -345,8 +345,8 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 		defer mux.Unlock()
 
 		// bump item to next position in queue - relative to round-robin index
-		// only applies to overall queue -- not individual stacks since idx 0
-		// always means first on a stack.
+		// only applies to overall queue -- not individual nested queues since idx 0
+		// always means first on a nested queue.
 		if args[1] == "next" {
 			streamId := args[2]
 			sourceIdx, found, err := queueItemIndex(streamId, sPlayback.GetQueue().PeekItems())
@@ -522,7 +522,7 @@ func (h *QueueCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 func NewCmdQueue() SocketCommand {
 	return &QueueCmd{
-		Command{
+		&Command{
 			name:        QUEUE_NAME,
 			description: QUEUE_DESCRIPTION,
 			usage:       QUEUE_USAGE,

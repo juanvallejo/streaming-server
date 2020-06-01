@@ -7,7 +7,7 @@ import (
 )
 
 type DebugCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -31,7 +31,7 @@ func (h *DebugCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 func NewCmdDebug() SocketCommand {
 	return &DebugCmd{
-		Command{
+		&Command{
 			name:        DEBUG_NAME,
 			description: DEBUG_DESCRIPTION,
 			usage:       DEBUG_USAGE,

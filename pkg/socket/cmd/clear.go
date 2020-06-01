@@ -7,7 +7,7 @@ import (
 )
 
 type ClearCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -27,7 +27,7 @@ func (h *ClearCmd) Execute(cmdHandler SocketCommandHandler, args []string, user 
 
 func NewCmdClear() SocketCommand {
 	return &ClearCmd{
-		Command{
+		&Command{
 			name:        CLEAR_NAME,
 			description: CLEAR_DESCRIPTION,
 			usage:       CLEAR_USAGE,

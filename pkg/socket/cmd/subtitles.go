@@ -15,8 +15,10 @@ import (
 	"github.com/juanvallejo/streaming-server/pkg/stream"
 )
 
+// TODO: save subtitles state in playback state sent to the client
+// also allow for subtitles to be specified from a URL
 type SubtitlesCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -48,7 +50,7 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 
 	subtitlesFilepath := ""
 	if len(args) == 0 {
-		subtitlesFilepath = guessSubtitlesFilepathFromCurrentNamespace(playbackHandler, userRoom, subtitlesRootDir)
+		subtitlesFilepath = findSubtitlesFilepathGivenCurrentNamespace(playbackHandler, userRoom, subtitlesRootDir)
 		if len(subtitlesFilepath) == 0 {
 			return "", fmt.Errorf("error: no subtitles filepath specified")
 		}
@@ -89,13 +91,13 @@ func (h *SubtitlesCmd) Execute(cmdHandler SocketCommandHandler, args []string, u
 		},
 	})
 
-	user.BroadcastSystemMessageAll(fmt.Sprintf("%q has requested to remove subtitles from the stream", username))
+	user.BroadcastSystemMessageAll(fmt.Sprintf("%q has requested to add subtitles to the stream", username))
 	return "attempting to add subtitles to the stream...", nil
 }
 
-// guessSubtitlesFilepathFromCurrentNamespace lists all valid subtitle files in the SUBTITLES_FILE_ROOT
+// findSubtitlesFilepathGivenCurrentNamespace lists all valid subtitle files in the SUBTITLES_FILE_ROOT
 // and attempts to find the first file whose name matches the current stream's URL minus its extension
-func guessSubtitlesFilepathFromCurrentNamespace(playbackHandler playback.PlaybackHandler, userRoom connection.Namespace, subtitlesRootDir string) string {
+func findSubtitlesFilepathGivenCurrentNamespace(playbackHandler playback.PlaybackHandler, userRoom connection.Namespace, subtitlesRootDir string) string {
 	validSubtitleExts := map[string]bool{
 		".vtt": true,
 	}
@@ -156,7 +158,7 @@ func guessSubtitlesFilepathFromCurrentNamespace(playbackHandler playback.Playbac
 
 func NewCmdSubtitles() SocketCommand {
 	return &SubtitlesCmd{
-		Command{
+		&Command{
 			name:        SUBTITLES_NAME,
 			description: SUBTITLES_DESCRIPTION,
 			usage:       SUBTITLES_USAGE,

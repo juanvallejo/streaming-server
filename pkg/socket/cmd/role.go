@@ -11,7 +11,7 @@ import (
 )
 
 type RoleCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -186,7 +186,7 @@ func (h *RoleCmd) Execute(cmdHandler SocketCommandHandler, args []string, user *
 
 func NewCmdRole() SocketCommand {
 	return &RoleCmd{
-		Command{
+		&Command{
 			name:        ROLE_NAME,
 			description: ROLE_DESCRIPTION,
 			usage:       ROLE_USAGE,

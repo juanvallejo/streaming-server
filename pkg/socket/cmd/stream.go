@@ -15,7 +15,7 @@ import (
 )
 
 type StreamCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -259,7 +259,7 @@ func (h *StreamCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 func NewCmdStream() SocketCommand {
 	return &StreamCmd{
-		Command{
+		&Command{
 			name:        STREAM_NAME,
 			description: STREAM_DESCRIPTION,
 			usage:       STREAM_USAGE,

@@ -10,7 +10,7 @@ import (
 )
 
 type WhoamiCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -29,7 +29,7 @@ func (h *WhoamiCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 func NewCmdWhoami() SocketCommand {
 	return &WhoamiCmd{
-		Command{
+		&Command{
 			name:        WHOAMI_NAME,
 			description: WHOAMI_DESCRIPTION,
 			usage:       WHOAMI_USAGE,

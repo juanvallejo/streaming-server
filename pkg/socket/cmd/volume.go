@@ -11,7 +11,7 @@ import (
 )
 
 type VolumeCmd struct {
-	Command
+	*Command
 }
 
 const (
@@ -62,7 +62,7 @@ func (h *VolumeCmd) Execute(cmdHandler SocketCommandHandler, args []string, user
 
 func NewCmdVolume() SocketCommand {
 	return &VolumeCmd{
-		Command{
+		&Command{
 			name:        VOLUME_NAME,
 			description: VOLUME_DESCRIPTION,
 			usage:       VOLUME_USAGE,
