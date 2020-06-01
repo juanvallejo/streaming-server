@@ -103,7 +103,8 @@ func NewHandler(connHandler connection.ConnectionHandler) Handler {
 func (h *ApiHandler) registerDefaultEndpoints() {
 	h.RegisterEndpoint(endpoint.NewStreamEndpoint())
 	h.RegisterEndpoint(endpoint.NewYoutubeEndpoint())
-	h.RegisterEndpoint(endpoint.NewTwitchEndpoint())
+	// TODO: reenable once new twitch API changes are implemented
+	//h.RegisterEndpoint(endpoint.NewTwitchEndpoint())
 	h.RegisterEndpoint(endpoint.NewAuthEndpoint())
 	h.RegisterEndpoint(endpoint.NewSoundCloudEndpoint())
 }
