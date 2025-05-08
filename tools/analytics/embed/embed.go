@@ -3,6 +3,7 @@ package embed
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -13,7 +14,7 @@ func Embed(targetFilename, embedCodeSourceFilename string, out io.Writer) error 
 		return err
 	}
 
-	targetFileData, err := io.ReadAll(targetFile)
+	targetFileData, err := ioutil.ReadAll(targetFile)
 	if err != nil {
 		return err
 	}
@@ -23,7 +24,7 @@ func Embed(targetFilename, embedCodeSourceFilename string, out io.Writer) error 
 		return err
 	}
 
-	embedCodeFileData, err := io.ReadAll(embedCodeFile)
+	embedCodeFileData, err := ioutil.ReadAll(embedCodeFile)
 	if err != nil {
 		return err
 	}

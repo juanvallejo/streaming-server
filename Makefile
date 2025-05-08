@@ -1,9 +1,9 @@
 ENTRY_FILE=cmd/streaming.go
 DEST=bin/streaming
 
-.PHONY: all tools
+.PHONY: all
 
-all: client tools
+all: tools
 	go build -o ${DEST} ${ENTRY_FILE}
 
 client:
