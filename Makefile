@@ -1,7 +1,7 @@
 ENTRY_FILE=cmd/streaming.go
 DEST=bin/streaming
 
-.PHONY: all
+.PHONY: all tools
 
 all: tools
 	go build -o ${DEST} ${ENTRY_FILE}

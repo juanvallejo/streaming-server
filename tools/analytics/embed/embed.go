@@ -38,6 +38,6 @@ func Embed(targetFilename, embedCodeSourceFilename string, out io.Writer) error 
 
 	modified := contents[:idx+len(needle)] + string(embedCodeFileData)
 	modified = modified + contents[idx+len(needle):]
-	fmt.Fprintf(out, "%s\n", modified)
-	return nil
+
+	return ioutil.WriteFile(targetFilename, []byte(modified), os.ModePerm)
 }
